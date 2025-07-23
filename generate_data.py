@@ -7,19 +7,19 @@ np.random.seed(123)
 # Step 1: Define parameters from Table 1
 n = 1000  # Sample size
 covariates = {
-    'age': {'mean': 60, 'sd': 15, 'type': 'continuous'},
-    'surgery': {'prevalence': 0.20, 'type': 'binary'},
-    'collapse': {'prevalence': 0.20, 'type': 'binary'},
-    'respiratory_rate': {'mean': 24, 'sd': 8, 'type': 'integer'},
-    'chest_xray': {'prevalence': 0.50, 'type': 'binary'}
+    'age': {'mean': 56.1, 'sd': 17.5, 'type': 'continuous'},
+    'surgery': {'prevalence': 0.214, 'type': 'binary'},
+    'collapse': {'prevalence': 0.074, 'type': 'binary'},
+    'respiratory_rate': {'mean': 19.4, 'sd': 6.7, 'type': 'integer'},
+    'chest_xray': {'prevalence': 0.409, 'type': 'binary'}
 }
 true_beta = {
-    'Intercept': -3.5,
-    'age': 0.03,
-    'surgery': 0.9,
-    'collapse': 0.9,
-    'respiratory_rate': 0.05,
-    'chest_xray': 0.7
+    'Intercept': -2.95,
+    'age': 0.017,
+    'surgery': 0.51,
+    'collapse': 1.35,
+    'respiratory_rate': 0.057,
+    'chest_xray': 0.81
 }
 
 # Step 2: Generate covariates
@@ -62,12 +62,12 @@ dat.to_csv(path_or_buf="syn_data/original_data.csv", index=False)
 # Step 6: Documentation
 """
 Dataset Description:
-- age: Continuous, mean=60, SD=15 (years)
-- surgery: Binary, prevalence=0.20 (surgery within past 3 months)
-- collapse: Binary, prevalence=0.20 (collapse event)
-- respiratory_rate: Integer, mean=24, SD=8 (breaths per minute, rounded)
-- chest_xray: Binary, prevalence=0.50 (abnormal chest X-ray)
+- age: Continuous, mean=56.1, SD=17.5 (years)
+- surgery: Binary, prevalence=0.214 (surgery within past 3 months)
+- collapse: Binary, prevalence=0.074 (collapse event)
+- respiratory_rate: Integer, mean=19.4, SD=6.7 (breaths per minute, rounded)
+- chest_xray: Binary, prevalence=0.409 (abnormal chest X-ray)
 - PE: Binary outcome (Pulmonary Embolism), generated using logistic regression
-  with true coefficients from Table 1 (Intercept=-3.5, age=0.03, surgery=0.9,
-  collapse=0.9, respiratory_rate=0.05, chest_xray=0.7)
+  with true coefficients from Table 1 (Intercept=-2.95, age=0.017, surgery=0.51,
+  collapse=1.35, respiratory_rate=0.057, chest_xray=0.81)
 """
