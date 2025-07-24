@@ -24,21 +24,16 @@ true_beta = {
 
 # Step 2: Generate covariates
 data = {}
-# Age (continuous)
 data['age'] = np.random.normal(loc=covariates['age']['mean'], 
                               scale=covariates['age']['sd'], size=n)
-# Surgery (binary)
 data['surgery'] = np.random.binomial(1, covariates['surgery']['prevalence'], size=n)
-# Collapse (binary)
 data['collapse'] = np.random.binomial(1, covariates['collapse']['prevalence'], size=n)
-# Respiratory rate (continuous then rounded to integer)
 data['respiratory_rate'] = np.round(np.random.normal(loc=covariates['respiratory_rate']['mean'], 
                                                     scale=covariates['respiratory_rate']['sd'], 
                                                     size=n)).astype(int)
-# Chest X-ray (binary)
 data['chest_xray'] = np.random.binomial(1, covariates['chest_xray']['prevalence'], size=n)
 
-# Step 3: Generate outcome (PE) using logistic regression
+# Step 3: Generate outcomes
 design_matrix = np.column_stack([
     np.ones(n),  # Intercept
     data['age'],
@@ -49,9 +44,15 @@ design_matrix = np.column_stack([
 ])
 beta_vector = np.array([true_beta['Intercept'], true_beta['age'], true_beta['surgery'], 
                         true_beta['collapse'], true_beta['respiratory_rate'], true_beta['chest_xray']])
+
+# Binary outcome (PE)
 logits = design_matrix @ beta_vector
 probs_pe = 1 / (1 + np.exp(-logits))
 data['PE'] = np.random.binomial(1, probs_pe)
+
+# Continuous outcome (PE_score)
+pe_score = design_matrix @ beta_vector + np.random.normal(0, 1, n)  # Add noise
+data['PE_score'] = pe_score
 
 # Step 4: Create DataFrame
 dat = pd.DataFrame(data)
@@ -67,7 +68,6 @@ Dataset Description:
 - collapse: Binary, prevalence=0.074 (collapse event)
 - respiratory_rate: Integer, mean=19.4, SD=6.7 (breaths per minute, rounded)
 - chest_xray: Binary, prevalence=0.409 (abnormal chest X-ray)
-- PE: Binary outcome (Pulmonary Embolism), generated using logistic regression
-  with true coefficients from Table 1 (Intercept=-2.95, age=0.017, surgery=0.51,
-  collapse=1.35, respiratory_rate=0.057, chest_xray=0.81)
+- PE: Binary outcome, logistic regression with Table 1 coefficients
+- PE_score: Continuous outcome, linear regression with Table 1 coefficients + N(0,1) noise
 """
