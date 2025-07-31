@@ -25,13 +25,14 @@ def pool_rubin(coefficients, variances, m):
     pooled_se = np.sqrt(total_var)
     return pooled_beta, pooled_se
 
-def evaluate_imputation(full_list, original_data, eval_data, true_beta, predictor_names, outcome='y', col_miss=['X1', 'X2']):
+def evaluate_imputation(full_list, original_data, pre_imputation_data, eval_data, true_beta, predictor_names, outcome='y', col_miss=['X1', 'X2']):
     """
     Evaluate imputation methods.
     
     Parameters:
     - full_list: List of imputed DataFrames
-    - original_data: Original DataFrame (for RMSE)
+    - original_data: Original complete DataFrame (for true values)
+    - pre_imputation_data: DataFrame with missingness pattern (for mask)
     - eval_data: Evaluation DataFrame (for model performance)
     - true_beta: True coefficients
     - predictor_names: List of predictor names
@@ -49,11 +50,13 @@ def evaluate_imputation(full_list, original_data, eval_data, true_beta, predicto
         # Imputation RMSE
         rmse = {}
         for col in col_miss:
-            mask = full_list[0][col].isna()
+            mask = pre_imputation_data[col].isna()
             if mask.sum() > 0:
                 true_values = original_data.loc[mask, col]
                 imputed_values = full_data.loc[mask, col]
                 rmse[col] = np.sqrt(mean_squared_error(true_values, imputed_values))
+            else:
+                rmse[col] = np.nan
         
         # Coefficient metrics
         X = full_data[predictors]
@@ -61,13 +64,19 @@ def evaluate_imputation(full_list, original_data, eval_data, true_beta, predicto
         if outcome == 'y':
             model = LogisticRegression(random_state=123).fit(X, y)
             coefficients = model.coef_.flatten()
-            cov_matrix = np.linalg.inv(X.T @ X)
-            standard_errors = np.sqrt(np.diag(cov_matrix))
+            try:
+                cov_matrix = np.linalg.inv(X.T @ X)
+                standard_errors = np.sqrt(np.diag(cov_matrix))
+            except np.linalg.LinAlgError:
+                standard_errors = np.full_like(coefficients, np.nan)
         else:
             model = LinearRegression().fit(X, y)
             coefficients = model.coef_
-            cov_matrix = np.linalg.inv(X.T @ X) * np.var(model.predict(X) - y)
-            standard_errors = np.sqrt(np.diag(cov_matrix))
+            try:
+                cov_matrix = np.linalg.inv(X.T @ X) * np.var(model.predict(X) - y)
+                standard_errors = np.sqrt(np.diag(cov_matrix))
+            except np.linalg.LinAlgError:
+                standard_errors = np.full_like(coefficients, np.nan)
         
         bias = coefficients - true_beta
         ci_lower = coefficients - 1.96 * standard_errors
@@ -92,69 +101,63 @@ def evaluate_imputation(full_list, original_data, eval_data, true_beta, predicto
             'pred_metric': pred_metric,
             'rmse_X1': rmse.get('X1', np.nan),
             'rmse_X2': rmse.get('X2', np.nan),
+            'coefficients': coefficients,
             'bias': bias,
             'standard_errors': standard_errors,
-            'ci_coverage': ci_coverage
+            'ci_coverage': ci_coverage.astype(int)
         })
     
     # Pool results
     if len(full_list) > 1:  # MICE
         coefficients = [r['coefficients'] for r in results]
         standard_errors = [r['standard_errors'] for r in results]
-        pooled_beta, pooled_se = pool_rubin(coefficients, standard_errors**2, len(full_list))
+        pooled_beta, pooled_se = pool_rubin(coefficients, [se**2 for se in standard_errors], len(full_list))
         pooled_bias = np.mean([r['bias'] for r in results], axis=0)
-        pooled_sd = np.std(coefficients, axis=0, ddof=1)
         pooled_ci_coverage = np.mean([r['ci_coverage'] for r in results], axis=0)
         if outcome == 'y':
             pooled_results = {
                 'accuracy': np.mean([r['pred_metric']['accuracy'] for r in results]),
                 'auc': np.mean([r['pred_metric']['auc'] for r in results]),
-                'rmse_X1': np.mean([r['rmse_X1'] for r in results if not np.isnan(r['rmse_X1'])]),
-                'rmse_X2': np.mean([r['rmse_X2'] for r in results if not np.isnan(r['rmse_X2'])]),
+                'rmse_X1': np.nanmean([r['rmse_X1'] for r in results]),
+                'rmse_X2': np.nanmean([r['rmse_X2'] for r in results]),
                 'bias': pooled_bias,
-                'sd': pooled_sd,
+                'sd': pooled_se,  # Use pooled_se from Rubin's rules
                 'ci_coverage': pooled_ci_coverage
+                # 'coefficients': pooled_beta
             }
         else:
             pooled_results = {
                 'rmse_pred': np.mean([r['pred_metric']['rmse_pred'] for r in results]),
-                'rmse_X1': np.mean([r['rmse_X1'] for r in results if not np.isnan(r['rmse_X1'])]),
-                'rmse_X2': np.mean([r['rmse_X2'] for r in results if not np.isnan(r['rmse_X2'])]),
+                'rmse_X1': np.nanmean([r['rmse_X1'] for r in results]),
+                'rmse_X2': np.nanmean([r['rmse_X2'] for r in results]),
                 'bias': pooled_bias,
-                'sd': pooled_sd,
+                'sd': pooled_se,
                 'ci_coverage': pooled_ci_coverage
+                # 'coefficients': pooled_beta
             }
     else:  # Single/Mean
-        pooled_results = results[0]
-        if outcome == 'y':
-            pooled_results = {
-                'accuracy': results[0]['pred_metric']['accuracy'],
-                'auc': results[0]['pred_metric']['auc'],
-                'rmse_X1': results[0]['rmse_X1'],
-                'rmse_X2': results[0]['rmse_X2'],
-                'bias': results[0]['bias'],
-                'sd': results[0]['standard_errors'],
-                'ci_coverage': results[0]['ci_coverage']
-            }
-        else:
-            pooled_results = {
-                'rmse_pred': results[0]['pred_metric']['rmse_pred'],
-                'rmse_X1': results[0]['rmse_X1'],
-                'rmse_X2': results[0]['rmse_X2'],
-                'bias': results[0]['bias'],
-                'sd': results[0]['standard_errors'],
-                'ci_coverage': results[0]['ci_coverage']
-            }
+        pooled_results = {
+            'accuracy': results[0]['pred_metric'].get('accuracy', np.nan),
+            'auc': results[0]['pred_metric'].get('auc', np.nan),
+            'rmse_pred': results[0]['pred_metric'].get('rmse_pred', np.nan),
+            'rmse_X1': results[0]['rmse_X1'],
+            'rmse_X2': results[0]['rmse_X2'],
+            'bias': results[0]['bias'],
+            'sd': results[0]['standard_errors'],
+            'ci_coverage': results[0]['ci_coverage']
+            # 'coefficients': results[0]['coefficients']
+        }
     
     return pooled_results
 
-def evaluate_all_imputations(imputed_datasets, original_data, eval_data, true_beta, predictor_names, col_miss=['X1', 'X2']):
+def evaluate_all_imputations(imputed_datasets, original_data, datasets, eval_data, true_beta, predictor_names, col_miss=['X1', 'X2']):
     """
-    Evaluate all imputed datasets.
+    Evaluate all imputed datasets for matching outcomes.
     
     Parameters:
     - imputed_datasets: Dictionary of imputed datasets
-    - original_data: Original DataFrame
+    - original_data: Original complete DataFrame
+    - datasets: Dictionary of pre-imputation datasets with missingness
     - eval_data: Evaluation DataFrame
     - true_beta: True coefficients
     - predictor_names: List of predictor names
@@ -165,37 +168,38 @@ def evaluate_all_imputations(imputed_datasets, original_data, eval_data, true_be
     """
     results = []
     for dataset_name, methods in imputed_datasets.items():
+        pre_imputation_data = datasets[dataset_name]
         for method_name in methods:
-            for outcome in ['y', 'y_score']:
-                if method_name.startswith('mean') and 'with_y' in method_name:
-                    continue
-                if method_name.endswith(outcome):
-                    metrics = evaluate_imputation(
-                        methods[method_name]['full'],
-                        original_data,
-                        eval_data,
-                        true_beta,
-                        predictor_names,
-                        outcome=outcome,
-                        col_miss=col_miss
-                    )
-                    for i, predictor in enumerate(predictor_names):
-                        result = {
-                            'dataset': dataset_name,
-                            'method': method_name,
-                            'outcome': outcome,
-                            'predictor': predictor,
-                            'rmse_X1': metrics['rmse_X1'],
-                            'rmse_X2': metrics['rmse_X2'],
-                            'bias': metrics['bias'][i],
-                            'sd': metrics['sd'][i],
-                            'ci_coverage': metrics['ci_coverage'][i]
-                        }
-                        if outcome == 'y':
-                            result.update({'accuracy': metrics['accuracy'], 'auc': metrics['auc']})
-                        else:
-                            result.update({'rmse_pred': metrics['rmse_pred']})
-                        results.append(result)
+            outcomes = ['y'] if 'y' in method_name and 'y_score' not in method_name else ['y_score'] if 'y_score' in method_name else ['y', 'y_score']
+            for outcome in outcomes:
+                metrics = evaluate_imputation(
+                    methods[method_name]['full'],
+                    original_data,
+                    pre_imputation_data,
+                    eval_data,
+                    true_beta,
+                    predictor_names,
+                    outcome=outcome,
+                    col_miss=col_miss
+                )
+                for i, predictor in enumerate(predictor_names):
+                    result = {
+                        'dataset': dataset_name,
+                        'method': method_name,
+                        'outcome': outcome,
+                        'predictor': predictor,
+                        'rmse_X1': metrics['rmse_X1'],
+                        'rmse_X2': metrics['rmse_X2'],
+                        'bias': metrics['bias'][i],
+                        'sd': metrics['sd'][i],
+                        'ci_coverage': metrics['ci_coverage'][i]
+                        # 'coefficients': metrics.get('coefficients', np.full_like(metrics['bias'], np.nan))[i]
+                    }
+                    if outcome == 'y':
+                        result.update({'accuracy': metrics['accuracy'], 'auc': metrics['auc']})
+                    else:
+                        result.update({'rmse_pred': metrics['rmse_pred']})
+                    results.append(result)
     
     return pd.DataFrame(results)
 
@@ -204,6 +208,6 @@ def evaluate_all_imputations(imputed_datasets, original_data, eval_data, true_be
 Functions:
 - pool_rubin: Pools coefficients using Rubin's rules
 - evaluate_imputation: Evaluates one imputation method
-- evaluate_all_imputations: Evaluates all imputed datasets
+- evaluate_all_imputations: Evaluates imputed datasets for matching outcomes (mean, single_without, mice_without for both y and y_score)
 - Description: Computes RMSE, bias, SD, CI coverage, and model performance
 """

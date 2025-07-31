@@ -20,7 +20,7 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
     - seed: Random seed
     
     Returns:
-    - data: DataFrame with covariates, y, y_score
+    - data: DataFrame with covariates, X1_above_threshold, y, y_score
     - covariates: List of covariate names
     - beta: Coefficient array
     """
@@ -42,6 +42,10 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
         else:
             data[name] = (z > 0).astype(int)
         covariates.append(name)
+    
+    # Add X1_above_threshold
+    data['X1_above_threshold'] = (data['X1'] > 0).astype(int)
+    covariates.append('X1_above_threshold')
     
     # Add interaction terms
     if include_interactions:
@@ -93,8 +97,8 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
 # Documentation
 """
 Function: generate_data
-- Description: Generates synthetic data with standard normal covariates, optional interactions, nonlinear terms, and splines.
-- Covariates: X1, X2, ... (configurable % continuous, integer, binary)
+- Description: Generates synthetic data with standard normal covariates, X1_above_threshold, optional interactions, nonlinear terms, and splines.
+- Covariates: X1, X2, ..., X1_above_threshold
 - Outcomes: y (binary), y_score (continuous)
 - Returns: DataFrame, covariate names, true coefficients
 """

@@ -20,12 +20,13 @@ def mean_imputation(data, col_miss=['X1', 'X2']):
         dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
     return [dat_imputed]
 
-def single_imputation(data, outcome='y', col_miss=['X1', 'X2']):
+def single_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2']):
     """
     Impute missing values using linear regression.
     
     Parameters:
-    - data: Input DataFrame
+    - data: Input DataFrame (possibly without outcomes)
+    - original_data: Original DataFrame with outcomes for restoration
     - outcome: Response variable to include (or None)
     - col_miss: Columns to impute
     
@@ -45,14 +46,18 @@ def single_imputation(data, outcome='y', col_miss=['X1', 'X2']):
         X_missing = data.loc[mask_missing, predictors]
         if len(X_missing) > 0:
             dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+    for out in ['y', 'y_score']:
+        if out in original_data.columns and out not in dat_imputed.columns:
+            dat_imputed[out] = original_data[out]
     return [dat_imputed]
 
-def mice_imputation(data, outcome='y', col_miss=['X1', 'X2'], n_imputations=5, seed=123):
+def mice_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
     Impute missing values using MICE.
     
     Parameters:
-    - data: Input DataFrame
+    - data: Input DataFrame (possibly without outcomes)
+    - original_data: Original DataFrame with outcomes for restoration
     - outcome: Response variable to include (or None)
     - col_miss: Columns to impute
     - n_imputations: Number of imputations
@@ -70,6 +75,9 @@ def mice_imputation(data, outcome='y', col_miss=['X1', 'X2'], n_imputations=5, s
         imputer = IterativeImputer(max_iter=10, random_state=seed + i)
         dat_imputed = data.copy()
         dat_imputed[predictors] = imputer.fit_transform(data[predictors])
+        for out in ['y', 'y_score']:
+            if out in original_data.columns and out not in dat_imputed.columns:
+                dat_imputed[out] = original_data[out]
         dat_imputed_list.append(dat_imputed)
     return dat_imputed_list
 
@@ -87,23 +95,15 @@ def impute_datasets(datasets, col_miss=['X1', 'X2'], seed=123):
     """
     imputed_datasets = {}
     for dataset_name, data in datasets.items():
-        imputed_datasets[dataset_name] = {}
-        for outcome in ['y', 'y_score']:
-            imputed_datasets[dataset_name][f'mean_{outcome}'] = {
-                'full': mean_imputation(data, col_miss)
-            }
-            imputed_datasets[dataset_name][f'single_with_{outcome}'] = {
-                'full': single_imputation(data, outcome=outcome, col_miss=col_miss)
-            }
-            imputed_datasets[dataset_name][f'single_without_{outcome}'] = {
-                'full': single_imputation(data.drop(columns=[outcome]), outcome=None, col_miss=col_miss)
-            }
-            imputed_datasets[dataset_name][f'mice_with_{outcome}'] = {
-                'full': mice_imputation(data, outcome=outcome, col_miss=col_miss, seed=seed)
-            }
-            imputed_datasets[dataset_name][f'mice_without_{outcome}'] = {
-                'full': mice_imputation(data.drop(columns=[outcome]), outcome=None, col_miss=col_miss, seed=seed)
-            }
+        imputed_datasets[dataset_name] = {
+            'mean': {'full': mean_imputation(data, col_miss)},
+            'single_with_y': {'full': single_imputation(data, data, outcome='y', col_miss=col_miss)},
+            'single_with_y_score': {'full': single_imputation(data, data, outcome='y_score', col_miss=col_miss)},
+            'single_without': {'full': single_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss)},
+            'mice_with_y': {'full': mice_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
+            'mice_with_y_score': {'full': mice_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
+            'mice_without': {'full': mice_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)}
+        }
     return imputed_datasets
 
 # Documentation
@@ -112,5 +112,5 @@ Functions:
 - mean_imputation: Imputes X1, X2 with means
 - single_imputation: Imputes X1, X2 with linear regression
 - mice_imputation: Imputes X1, X2 with MICE (5 imputations)
-- impute_datasets: Applies all imputation methods
+- impute_datasets: Applies 7 imputation methods (mean, single_with_y, single_with_y_score, single_without, mice_with_y, mice_with_y_score, mice_without)
 """

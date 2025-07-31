@@ -18,9 +18,9 @@ def apply_missingness(data, Mmis, col_miss, vars, output_file):
     dat_miss = data.copy()
     for var in col_miss:
         coef = Mmis.loc[var].values
-        design_matrix = np.column_stack([np.ones(len(data))] + [data[v] for v in vars])
+        design_matrix = np.column_stack([np.ones(len(dat_miss))] + [dat_miss[v] for v in vars])
         probs = 1 / (1 + np.exp(-design_matrix @ coef))
-        dat_miss[var] = dat_miss[var].where(np.random.uniform(size=len(data)) >= probs, np.nan)
+        dat_miss[var] = dat_miss[var].where(np.random.uniform(size=len(dat_miss)) >= probs, np.nan)
     dat_miss.to_csv(output_file, index=False)
     return dat_miss
 
@@ -67,8 +67,8 @@ def define_missingness_patterns(data, col_miss=['X1', 'X2'], seed=123):
             'output': 'dat_mnar.csv'
         },
         'mar_threshold': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars + ['X1_above_threshold']),
-            'vars': vars + ['X1_above_threshold'],
+            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'vars': vars,
             'output': 'dat_mar_threshold.csv'
         }
     }
@@ -84,8 +84,7 @@ def define_missingness_patterns(data, col_miss=['X1', 'X2'], seed=123):
     patterns['mnar']['Mmis'].loc['X1', ['Intercept', 'X1']] = [-1.5, 0.03]
     patterns['mnar']['Mmis'].loc['X2', ['Intercept', 'X2']] = [-1.5, 0.05]
     patterns['mar_threshold']['Mmis'].loc['X1', ['Intercept', 'X3', 'X4']] = [-1.5, 0.5, 0.5]
-    patterns['mar_threshold']['Mmis'].loc['X2', ['Intercept', 'X3', 'X4']] = [-2.0, 0.5, 0.5]
-    patterns['mar_threshold']['Mmis'].loc['X2', 'X1_above_threshold'] = 1.5
+    patterns['mar_threshold']['Mmis'].loc['X2', ['Intercept', 'X3', 'X4', 'X1_above_threshold']] = [-2.0, 0.5, 0.5, 1.5]
     
     return patterns
 

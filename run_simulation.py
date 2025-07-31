@@ -52,7 +52,7 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
         true_beta_df = pd.read_csv(os.path.join(run_dir, 'true_beta.csv'), header=None)
         predictor_names = true_beta_df[0][1:].tolist()
         true_beta = true_beta_df[1][1:].astype(float).values
-        results = evaluate_all_imputations(imputed_datasets, data, eval_data, true_beta, predictor_names)
+        results = evaluate_all_imputations(imputed_datasets, data, datasets, eval_data, true_beta, predictor_names)
         results['run'] = run
         results.to_csv(os.path.join(run_dir, 'results.csv'), index=False)
         results_all.append(results)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     print("Simulation Results:")
     print(results.pivot_table(
         index=['run', 'dataset', 'outcome', 'method', 'predictor'],
-        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'ci_coverage', 'accuracy', 'auc', 'rmse_pred'],
+        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
         aggfunc='mean'
     ).reset_index())
 
