@@ -16,11 +16,16 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
     - num_runs: Number of simulation runs
     - n, p, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines: Data generation parameters
     - base_seed: Base random seed
-    - output_base_dir: Base directory for outputs
+    - output_base_dir: Base directory for outputs (will be modified to include parameters)
     
     Returns:
-    - List of result DataFrames
+    - DataFrame of all results
     """
+    # Create parameter-specific output directory
+    param_dir = f'n_{n}_p_{p}_runs_{num_runs}'
+    output_base_dir = os.path.join(output_base_dir, param_dir)
+    os.makedirs(output_base_dir, exist_ok=True)
+    
     results_all = []
     
     for run in range(1, num_runs + 1):
@@ -57,21 +62,58 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
         results.to_csv(os.path.join(run_dir, 'results.csv'), index=False)
         results_all.append(results)
     
-    return pd.concat(results_all, ignore_index=True)
+    # Save combined results
+    all_results = pd.concat(results_all, ignore_index=True)
+    all_results.to_csv(os.path.join(output_base_dir, 'results_all_runs.csv'), index=False)
+    
+    # Save metadata
+    metadata = pd.DataFrame([{
+        'num_runs': num_runs,
+        'n': n,
+        'p': p,
+        'continuous_pct': continuous_pct,
+        'integer_pct': integer_pct,
+        'sparsity': sparsity,
+        'include_interactions': include_interactions,
+        'include_nonlinear': include_nonlinear,
+        'include_splines': include_splines,
+        'base_seed': base_seed,
+        'output_dir': output_base_dir
+    }])
+    metadata_file = os.path.join('syn_data', 'metadata.csv')
+    if os.path.exists(metadata_file):
+        existing_metadata = pd.read_csv(metadata_file)
+        metadata = pd.concat([existing_metadata, metadata], ignore_index=True)
+    metadata.to_csv(metadata_file, index=False)
+    
+    return all_results
 
 # Run simulations
 if __name__ == "__main__":
     results = run_simulation()
-    print("Simulation Results:")
+    print("Simulation Results (Per Run):")
     print(results.pivot_table(
         index=['run', 'dataset', 'outcome', 'method', 'predictor'],
         values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
         aggfunc='mean'
     ).reset_index())
+    
+    print("\nAveraged Results Across Runs:")
+    averaged_results = results.pivot_table(
+        index=['dataset', 'outcome', 'method', 'predictor'],
+        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
+        aggfunc='mean'
+    ).reset_index()
+    print(averaged_results)
+    averaged_results.to_csv(os.path.join('syn_data', 'n_1000_p_5_runs_2', 'results_averaged.csv'), index=False)
 
 # Documentation
 """
 Script: run_simulation.py
 - Description: Runs multiple simulations of data generation, missingness, imputation, and evaluation
-- Outputs: Per-run directories (syn_data/run_i/) with original_data.csv, eval_data.csv, true_beta.csv, missing datasets, and results.csv
+- Outputs: 
+  - Per-run directories (syn_data/n_{n}_p_{p}_runs_{num_runs}/run_i/) with original_data.csv, eval_data.csv, true_beta.csv, missing datasets, and results.csv
+  - Combined results (syn_data/n_{n}_p_{p}_runs_{num_runs}/results_all_runs.csv)
+  - Averaged results (syn_data/n_{n}_p_{p}_runs_{num_runs}/results_averaged.csv)
+  - Metadata (syn_data/metadata.csv) with simulation parameters
 """
