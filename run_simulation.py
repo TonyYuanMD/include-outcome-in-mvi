@@ -7,7 +7,7 @@ from impute_stats import impute_datasets
 from evaluate_imputations import evaluate_all_imputations
 
 def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3,
-                  include_interactions=True, include_nonlinear=True, include_splines=True,
+                  include_interactions=False, include_nonlinear=False, include_splines=False,
                   base_seed=123, output_base_dir="syn_data"):
     """
     Run multiple simulations of data generation, missingness, imputation, and evaluation.
