@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from generate_data import generate_data
 from generate_missingness import define_missingness_patterns, apply_missingness
 from impute_stats import impute_datasets
@@ -22,9 +23,12 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
     - DataFrame of all results
     """
     # Create parameter-specific output directory
-    param_dir = f'n_{n}_p_{p}_runs_{num_runs}'
+    param_dir = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
     output_base_dir = os.path.join(output_base_dir, param_dir)
     os.makedirs(output_base_dir, exist_ok=True)
+    
+    # Generate unique simulation ID (timestamp)
+    sim_id = datetime.now().strftime('%Y%m%d_%H%M%S')
     
     results_all = []
     
@@ -59,6 +63,7 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
         true_beta = true_beta_df[1][1:].astype(float).values
         results = evaluate_all_imputations(imputed_datasets, data, datasets, eval_data, true_beta, predictor_names)
         results['run'] = run
+        results['sim_id'] = sim_id
         results.to_csv(os.path.join(run_dir, 'results.csv'), index=False)
         results_all.append(results)
     
@@ -66,8 +71,18 @@ def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4,
     all_results = pd.concat(results_all, ignore_index=True)
     all_results.to_csv(os.path.join(output_base_dir, 'results_all_runs.csv'), index=False)
     
+    # Save averaged results
+    averaged_results = all_results.pivot_table(
+        index=['dataset', 'outcome', 'method', 'predictor'],
+        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
+        aggfunc='mean'
+    ).reset_index()
+    averaged_results['sim_id'] = sim_id
+    averaged_results.to_csv(os.path.join(output_base_dir, 'results_averaged.csv'), index=False)
+    
     # Save metadata
     metadata = pd.DataFrame([{
+        'sim_id': sim_id,
         'num_runs': num_runs,
         'n': n,
         'p': p,
@@ -93,27 +108,26 @@ if __name__ == "__main__":
     results = run_simulation()
     print("Simulation Results (Per Run):")
     print(results.pivot_table(
-        index=['run', 'dataset', 'outcome', 'method', 'predictor'],
+        index=['sim_id', 'run', 'dataset', 'outcome', 'method', 'predictor'],
         values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
         aggfunc='mean'
     ).reset_index())
     
     print("\nAveraged Results Across Runs:")
     averaged_results = results.pivot_table(
-        index=['dataset', 'outcome', 'method', 'predictor'],
+        index=['sim_id', 'dataset', 'outcome', 'method', 'predictor'],
         values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
         aggfunc='mean'
     ).reset_index()
     print(averaged_results)
-    averaged_results.to_csv(os.path.join('syn_data', 'n_1000_p_5_runs_2', 'results_averaged.csv'), index=False)
 
 # Documentation
 """
 Script: run_simulation.py
 - Description: Runs multiple simulations of data generation, missingness, imputation, and evaluation
 - Outputs: 
-  - Per-run directories (syn_data/n_{n}_p_{p}_runs_{num_runs}/run_i/) with original_data.csv, eval_data.csv, true_beta.csv, missing datasets, and results.csv
-  - Combined results (syn_data/n_{n}_p_{p}_runs_{num_runs}/results_all_runs.csv)
-  - Averaged results (syn_data/n_{n}_p_{p}_runs_{num_runs}/results_averaged.csv)
-  - Metadata (syn_data/metadata.csv) with simulation parameters
+  - Per-run directories (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/run_i/) with original_data.csv, eval_data.csv, true_beta.csv, missing datasets, and results.csv
+  - Combined results (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/results_all_runs.csv)
+  - Averaged results (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/results_averaged.csv)
+  - Metadata (syn_data/metadata.csv) with simulation parameters and sim_id
 """
