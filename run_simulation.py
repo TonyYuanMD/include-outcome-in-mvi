@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=False, nonlinear=False, spline=False, seed=123):
+def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, include_interactions=False, include_nonlinear=False, include_splines=False, seed=123):
     """
     Run simulation with data generation, missingness, imputation, and evaluation.
     
@@ -26,18 +26,23 @@ def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=F
     - n: Number of observations
     - p: Number of predictors
     - num_runs: Number of simulation runs
-    - cont: Proportion of continuous predictors
-    - sparse: Sparsity level
-    - interactions: Include interactions
-    - nonlinear: Include nonlinear terms
-    - spline: Include spline terms
+    - continuous_pct: Proportion of continuous predictors
+    - sparsity: Sparsity level for coefficients
+    - include_interactions: Include pairwise interaction terms
+    - include_nonlinear: Include sin, cos transformations
+    - include_splines: Include spline basis expansion
     - seed: Random seed
     
     Returns:
     - results: Dictionary of results
     """
+    # Validate integer_pct
+    integer_pct = 1 - continuous_pct - sparsity
+    if integer_pct < 0:
+        raise ValueError(f"integer_pct={integer_pct} is negative. Adjust continuous_pct={continuous_pct} and sparsity={sparsity} so their sum <= 1.")
+
     results = {}
-    output_dir = f'syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{cont}_sparse_{sparse}/'
+    output_dir = f'syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/'
     os.makedirs(output_dir, exist_ok=True)
     
     logger.info(f"Starting simulation: n={n}, p={p}, runs={num_runs}, seed={seed}")
@@ -48,7 +53,17 @@ def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=F
         
         # Generate data
         logger.info(f"Run {run}: Generating data")
-        data = generate_data(n=n, p=p, cont=cont, sparse=sparse, interactions=interactions, nonlinear=nonlinear, spline=spline, seed=seed + run)
+        data, covariates, beta = generate_data(
+            n=n,
+            p=p,
+            continuous_pct=continuous_pct,
+            integer_pct=integer_pct,
+            sparsity=sparsity,
+            include_interactions=include_interactions,
+            include_nonlinear=include_nonlinear,
+            include_splines=include_splines,
+            seed=seed + run
+        )
         data.to_csv(os.path.join(run_dir, 'complete_data.csv'), index=False)
         
         # Generate missingness patterns
@@ -56,7 +71,13 @@ def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=F
         patterns = define_missingness_patterns(data, seed=seed + run)
         datasets = {}
         for name, pattern in patterns.items():
-            datasets[name] = apply_missingness(data, pattern['Mmis'], col_miss=['X1', 'X2'], vars=pattern['vars'], output_file=os.path.join(run_dir, pattern['output']))
+            datasets[name] = apply_missingness(
+                data,
+                pattern['Mmis'],
+                col_miss=['X1', 'X2'],
+                vars=pattern['vars'],
+                output_file=os.path.join(run_dir, pattern['output'])
+            )
             logger.info(f"Run {run}: Saved {name} dataset with missingness")
         
         # Impute datasets
@@ -84,6 +105,9 @@ def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=F
     
     logger.info(f"Simulation complete. Results saved in {output_dir}")
     return results
+
+if __name__ == "__main__":
+    results = run_simulation(num_runs=1)  # Default to 1 run for testing
 
 # Documentation
 """

@@ -100,8 +100,8 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
                 X_train_scaled = scaler.fit_transform(X_train)
                 model = MLPRegressor(
                     hidden_layer_sizes=(100, 50),
-                    max_iter=1000,  # Increased from 500
-                    early_stopping=True,  # Enable early stopping
+                    max_iter=1000,
+                    early_stopping=True,
                     validation_fraction=0.1,
                     n_iter_no_change=10,
                     random_state=seed + i + iteration
@@ -127,13 +127,17 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
 
 def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
-    Impute missing values using an Autoencoder (PyTorch).
+    Impute missing values using an Autoencoder (PyTorch) with GPU support if available.
     """
     torch.manual_seed(seed)
     dat_imputed_list = []
     predictors = [col for col in data.columns if col not in ['y', 'y_score']]
     if outcome:
         predictors.append(outcome)
+    
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Autoencoder using device: {device}")
     
     # Normalize data
     data_norm = data[predictors].copy()
@@ -162,11 +166,11 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
     
     input_dim = len(predictors)
     for i in tqdm(range(n_imputations), desc="AE Imputations", leave=False):
-        model = Autoencoder(input_dim)
+        model = Autoencoder(input_dim).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         criterion = nn.MSELoss()
         
-        data_tensor = torch.tensor(data_norm.values, dtype=torch.float32)
+        data_tensor = torch.tensor(data_norm.values, dtype=torch.float32).to(device)
         
         # Train with early stopping
         best_loss = float('inf')
@@ -179,19 +183,20 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
             loss = criterion(output, data_tensor)
             loss.backward()
             optimizer.step()
-            if loss.item() < best_loss:
-                best_loss = loss.item()
+            loss_value = loss.item()
+            if loss_value < best_loss:
+                best_loss = loss_value
                 patience_counter = 0
             else:
                 patience_counter += 1
-            logger.info(f"AE imputation {i+1}, epoch {epoch+1}: Loss = {loss.item():.6f}")
+            logger.info(f"AE imputation {i+1}, epoch {epoch+1}: Loss = {loss_value:.6f}")
             if patience_counter >= patience:
                 logger.info(f"AE imputation {i+1}: Early stopping at epoch {epoch+1}")
                 break
         
         # Impute
         with torch.no_grad():
-            imputed_norm = model(data_tensor).numpy()
+            imputed_norm = model(data_tensor).cpu().numpy()
         imputed_data = pd.DataFrame(imputed_norm, columns=predictors, index=data.index)
         imputed_data = imputed_data * stds + means
         dat_imputed = data.copy()
@@ -206,13 +211,17 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
 
 def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
-    Impute missing values using a GAIN-like GAN in PyTorch.
+    Impute missing values using a GAIN-like GAN in PyTorch with GPU support if available.
     """
     torch.manual_seed(seed)
     dat_imputed_list = []
     predictors = [col for col in data.columns if col not in ['y', 'y_score']]
     if outcome:
         predictors.append(outcome)
+    
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"GAIN using device: {device}")
     
     # Normalize data
     data_norm = data[predictors].copy()
@@ -224,15 +233,15 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
     n_samples, input_dim = data_norm.shape
     
     for i in tqdm(range(n_imputations), desc="GAN Imputations", leave=False):
-        generator = Generator(input_dim)
-        discriminator = Discriminator(input_dim)
+        generator = Generator(input_dim).to(device)
+        discriminator = Discriminator(input_dim).to(device)
         g_optimizer = optim.Adam(generator.parameters(), lr=0.001)
         d_optimizer = optim.Adam(discriminator.parameters(), lr=0.001)
         mse_loss = nn.MSELoss()
         bce_loss = nn.BCELoss()
         
-        data_tensor = torch.tensor(data_norm.values, dtype=torch.float32)
-        mask_tensor = torch.tensor(mask.values, dtype=torch.float32)
+        data_tensor = torch.tensor(data_norm.values, dtype=torch.float32).to(device)
+        mask_tensor = torch.tensor(mask.values, dtype=torch.float32).to(device)
         
         # Training loop with early stopping
         batch_size = 32
@@ -297,7 +306,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
         # Impute
         gen_input = torch.cat([data_tensor, mask_tensor], dim=1)
         with torch.no_grad():
-            imputed_norm = generator(gen_input).numpy()
+            imputed_norm = generator(gen_input).cpu().numpy()
         imputed_data = pd.DataFrame(imputed_norm, columns=predictors, index=data.index)
         imputed_data = imputed_data * stds + means
         dat_imputed = data.copy()
@@ -315,6 +324,6 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
 Functions:
 - missforest_imputation: Imputes X1, X2 with Random Forest (5 imputations), using iterative mean initialization
 - mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations), using iterative mean initialization and scaling
-- autoencoder_imputation: Imputes X1, X2 with Autoencoder (5 imputations, PyTorch)
-- gain_imputation: Imputes X1, X2 with GAIN-like GAN (5 imputations, PyTorch, imports models from gan_models.py)
+- autoencoder_imputation: Imputes X1, X2 with Autoencoder (5 imputations, PyTorch, GPU support)
+- gain_imputation: Imputes X1, X2 with GAIN-like GAN (5 imputations, PyTorch, GPU support, imports models from gan_models.py)
 """
