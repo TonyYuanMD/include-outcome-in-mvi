@@ -4,6 +4,9 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.linear_model import LinearRegression
 
+# Import ML/DL methods
+from impute_ml_dl import missforest_imputation, mlp_imputation, autoencoder_imputation, gain_imputation
+
 def mean_imputation(data, col_miss=['X1', 'X2']):
     """
     Impute missing values with column means.
@@ -102,7 +105,19 @@ def impute_datasets(datasets, col_miss=['X1', 'X2'], seed=123):
             'single_without': {'full': single_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss)},
             'mice_with_y': {'full': mice_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
             'mice_with_y_score': {'full': mice_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
-            'mice_without': {'full': mice_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)}
+            'mice_without': {'full': mice_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)},
+            'missforest_with_y': {'full': missforest_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
+            'missforest_with_y_score': {'full': missforest_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
+            'missforest_without': {'full': missforest_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)},
+            'mlp_with_y': {'full': mlp_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
+            'mlp_with_y_score': {'full': mlp_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
+            'mlp_without': {'full': mlp_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)},
+            'ae_with_y': {'full': autoencoder_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
+            'ae_with_y_score': {'full': autoencoder_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
+            'ae_without': {'full': autoencoder_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)},
+            'gain_with_y': {'full': gain_imputation(data, data, outcome='y', col_miss=col_miss, seed=seed)},
+            'gain_with_y_score': {'full': gain_imputation(data, data, outcome='y_score', col_miss=col_miss, seed=seed)},
+            'gain_without': {'full': gain_imputation(data.drop(columns=['y', 'y_score'], errors='ignore'), data, outcome=None, col_miss=col_miss, seed=seed)}
         }
     return imputed_datasets
 
@@ -112,5 +127,5 @@ Functions:
 - mean_imputation: Imputes X1, X2 with means
 - single_imputation: Imputes X1, X2 with linear regression
 - mice_imputation: Imputes X1, X2 with MICE (5 imputations)
-- impute_datasets: Applies 7 imputation methods (mean, single_with_y, single_with_y_score, single_without, mice_with_y, mice_with_y_score, mice_without)
+- impute_datasets: Applies 19 imputation methods (mean, single_with_y, single_with_y_score, single_without, mice_with_y, mice_with_y_score, mice_without, missforest_with_y, missforest_with_y_score, missforest_without, mlp_with_y, mlp_with_y_score, mlp_without, ae_with_y, ae_with_y_score, ae_without, gain_with_y, gain_with_y_score, gain_without)
 """
