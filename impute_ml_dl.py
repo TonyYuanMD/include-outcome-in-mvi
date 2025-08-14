@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neural_network import MLPRegressor
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -66,7 +67,7 @@ def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2
 
 def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
-    Impute missing values using MLP Regressor with iterative mean initialization.
+    Impute missing values using MLP Regressor with iterative mean initialization and scaling.
     """
     np.random.seed(seed)
     dat_imputed_list = []
@@ -94,12 +95,23 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
                     continue
                 X_train = dat_imputed.loc[mask, [p for p in predictors if p != col]]
                 y_train = data.loc[mask, col]
-                model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=500, random_state=seed + i + iteration)
-                model.fit(X_train, y_train)
+                # Scale predictors
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train)
+                model = MLPRegressor(
+                    hidden_layer_sizes=(100, 50),
+                    max_iter=1000,  # Increased from 500
+                    early_stopping=True,  # Enable early stopping
+                    validation_fraction=0.1,
+                    n_iter_no_change=10,
+                    random_state=seed + i + iteration
+                )
+                model.fit(X_train_scaled, y_train)
                 mask_missing = data[col].isna()
                 X_missing = dat_imputed.loc[mask_missing, [p for p in predictors if p != col]]
                 if len(X_missing) > 0:
-                    dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+                    X_missing_scaled = scaler.transform(X_missing)
+                    dat_imputed.loc[mask_missing, col] = model.predict(X_missing_scaled)
             # Check convergence
             diff = ((dat_imputed[col_miss] - old_imputed) ** 2).mean().mean()
             logger.info(f"MLP imputation {i+1}, iteration {iteration+1}: Convergence diff = {diff:.6f}")
@@ -302,7 +314,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
 """
 Functions:
 - missforest_imputation: Imputes X1, X2 with Random Forest (5 imputations), using iterative mean initialization
-- mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations), using iterative mean initialization
+- mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations), using iterative mean initialization and scaling
 - autoencoder_imputation: Imputes X1, X2 with Autoencoder (5 imputations, PyTorch)
 - gain_imputation: Imputes X1, X2 with GAIN-like GAN (5 imputations, PyTorch, imports models from gan_models.py)
 """
