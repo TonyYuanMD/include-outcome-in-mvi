@@ -5,44 +5,59 @@ from sklearn.neural_network import MLPRegressor
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import warnings
+import logging
+from tqdm import tqdm
 
 # Import GAN models
 from gan_models import Generator, Discriminator
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
-    Impute missing values using Random Forest (MissForest-like).
-    
-    Parameters:
-    - data: Input DataFrame (possibly without outcomes)
-    - original_data: Original DataFrame with outcomes for restoration
-    - outcome: Response variable to include (or None)
-    - col_miss: Columns to impute
-    - n_imputations: Number of imputations
-    - seed: Random seed
-    
-    Returns:
-    - List of imputed DataFrames
+    Impute missing values using Random Forest (MissForest-like) with iterative mean initialization.
     """
     np.random.seed(seed)
     dat_imputed_list = []
     predictors = [col for col in data.columns if col not in ['y', 'y_score']]
     if outcome:
         predictors.append(outcome)
-    for i in range(n_imputations):
+    
+    for i in tqdm(range(n_imputations), desc="MissForest Imputations", leave=False):
+        # Initialize with mean imputation
         dat_imputed = data.copy()
         for col in col_miss:
-            mask = ~data[col].isna()
-            if mask.sum() == 0:  # Skip if no complete cases
-                continue
-            X_train = data.loc[mask, predictors]
-            y_train = data.loc[mask, col]
-            model = RandomForestRegressor(n_estimators=100, random_state=seed + i)
-            model.fit(X_train, y_train)
-            mask_missing = data[col].isna()
-            X_missing = data.loc[mask_missing, predictors]
-            if len(X_missing) > 0:
-                dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+            dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
+        
+        # Iterate until convergence or max iterations
+        max_iter = 10
+        tol = 0.001
+        logger.info(f"MissForest imputation {i+1}/{n_imputations}: Starting iterations")
+        for iteration in range(max_iter):
+            old_imputed = dat_imputed[col_miss].copy()
+            for col in col_miss:
+                mask = ~data[col].isna()
+                if mask.sum() < 50:
+                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MissForest, iteration {iteration}, keeping mean imputation")
+                    logger.warning(f"MissForest: Too few complete cases for {col}, iteration {iteration}")
+                    continue
+                X_train = dat_imputed.loc[mask, [p for p in predictors if p != col]]
+                y_train = data.loc[mask, col]
+                model = RandomForestRegressor(n_estimators=100, random_state=seed + i + iteration)
+                model.fit(X_train, y_train)
+                mask_missing = data[col].isna()
+                X_missing = dat_imputed.loc[mask_missing, [p for p in predictors if p != col]]
+                if len(X_missing) > 0:
+                    dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+            # Check convergence
+            diff = ((dat_imputed[col_miss] - old_imputed) ** 2).mean().mean()
+            logger.info(f"MissForest imputation {i+1}, iteration {iteration+1}: Convergence diff = {diff:.6f}")
+            if diff < tol:
+                logger.info(f"MissForest imputation {i+1}: Converged at iteration {iteration+1}")
+                break
+        # Restore outcomes
         for out in ['y', 'y_score']:
             if out in original_data.columns and out not in dat_imputed.columns:
                 dat_imputed[out] = original_data[out]
@@ -51,38 +66,47 @@ def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2
 
 def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
-    Impute missing values using MLP Regressor.
-    
-    Parameters:
-    - data: Input DataFrame (possibly without outcomes)
-    - original_data: Original DataFrame with outcomes for restoration
-    - outcome: Response variable to include (or None)
-    - col_miss: Columns to impute
-    - n_imputations: Number of imputations
-    - seed: Random seed
-    
-    Returns:
-    - List of imputed DataFrames
+    Impute missing values using MLP Regressor with iterative mean initialization.
     """
     np.random.seed(seed)
     dat_imputed_list = []
     predictors = [col for col in data.columns if col not in ['y', 'y_score']]
     if outcome:
         predictors.append(outcome)
-    for i in range(n_imputations):
+    
+    for i in tqdm(range(n_imputations), desc="MLP Imputations", leave=False):
+        # Initialize with mean imputation
         dat_imputed = data.copy()
         for col in col_miss:
-            mask = ~data[col].isna()
-            if mask.sum() == 0:  # Skip if no complete cases
-                continue
-            X_train = data.loc[mask, predictors]
-            y_train = data.loc[mask, col]
-            model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=500, random_state=seed + i)
-            model.fit(X_train, y_train)
-            mask_missing = data[col].isna()
-            X_missing = data.loc[mask_missing, predictors]
-            if len(X_missing) > 0:
-                dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+            dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
+        
+        # Iterate until convergence or max iterations
+        max_iter = 10
+        tol = 0.001
+        logger.info(f"MLP imputation {i+1}/{n_imputations}: Starting iterations")
+        for iteration in range(max_iter):
+            old_imputed = dat_imputed[col_miss].copy()
+            for col in col_miss:
+                mask = ~data[col].isna()
+                if mask.sum() < 50:
+                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MLP, iteration {iteration}, keeping mean imputation")
+                    logger.warning(f"MLP: Too few complete cases for {col}, iteration {iteration}")
+                    continue
+                X_train = dat_imputed.loc[mask, [p for p in predictors if p != col]]
+                y_train = data.loc[mask, col]
+                model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=500, random_state=seed + i + iteration)
+                model.fit(X_train, y_train)
+                mask_missing = data[col].isna()
+                X_missing = dat_imputed.loc[mask_missing, [p for p in predictors if p != col]]
+                if len(X_missing) > 0:
+                    dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
+            # Check convergence
+            diff = ((dat_imputed[col_miss] - old_imputed) ** 2).mean().mean()
+            logger.info(f"MLP imputation {i+1}, iteration {iteration+1}: Convergence diff = {diff:.6f}")
+            if diff < tol:
+                logger.info(f"MLP imputation {i+1}: Converged at iteration {iteration+1}")
+                break
+        # Restore outcomes
         for out in ['y', 'y_score']:
             if out in original_data.columns and out not in dat_imputed.columns:
                 dat_imputed[out] = original_data[out]
@@ -92,17 +116,6 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
 def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
     Impute missing values using an Autoencoder (PyTorch).
-    
-    Parameters:
-    - data: Input DataFrame (possibly without outcomes)
-    - original_data: Original DataFrame with outcomes for restoration
-    - outcome: Response variable to include (or None)
-    - col_miss: Columns to impute
-    - n_imputations: Number of imputations
-    - seed: Random seed
-    
-    Returns:
-    - List of imputed DataFrames
     """
     torch.manual_seed(seed)
     dat_imputed_list = []
@@ -136,7 +149,7 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
             return self.decoder(self.encoder(x))
     
     input_dim = len(predictors)
-    for i in range(n_imputations):
+    for i in tqdm(range(n_imputations), desc="AE Imputations", leave=False):
         model = Autoencoder(input_dim)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         criterion = nn.MSELoss()
@@ -147,6 +160,7 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
         best_loss = float('inf')
         patience = 10
         patience_counter = 0
+        logger.info(f"AE imputation {i+1}/{n_imputations}: Starting training")
         for epoch in range(50):
             optimizer.zero_grad()
             output = model(data_tensor)
@@ -158,7 +172,9 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
                 patience_counter = 0
             else:
                 patience_counter += 1
+            logger.info(f"AE imputation {i+1}, epoch {epoch+1}: Loss = {loss.item():.6f}")
             if patience_counter >= patience:
+                logger.info(f"AE imputation {i+1}: Early stopping at epoch {epoch+1}")
                 break
         
         # Impute
@@ -179,17 +195,6 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
 def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
     """
     Impute missing values using a GAIN-like GAN in PyTorch.
-    
-    Parameters:
-    - data: Input DataFrame (possibly without outcomes)
-    - original_data: Original DataFrame with outcomes for restoration
-    - outcome: Response variable to include (or None)
-    - col_miss: Columns to impute
-    - n_imputations: Number of imputations
-    - seed: Random seed
-    
-    Returns:
-    - List of imputed DataFrames
     """
     torch.manual_seed(seed)
     dat_imputed_list = []
@@ -206,7 +211,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
     data_norm = data_norm.fillna(0)
     n_samples, input_dim = data_norm.shape
     
-    for i in range(n_imputations):
+    for i in tqdm(range(n_imputations), desc="GAN Imputations", leave=False):
         generator = Generator(input_dim)
         discriminator = Discriminator(input_dim)
         g_optimizer = optim.Adam(generator.parameters(), lr=0.001)
@@ -223,6 +228,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
         best_g_loss = float('inf')
         patience = 10
         patience_counter = 0
+        logger.info(f"GAN imputation {i+1}/{n_imputations}: Starting training")
         for epoch in range(50):
             epoch_g_loss = 0
             for _ in range(steps):
@@ -266,12 +272,14 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
             
             # Early stopping
             epoch_g_loss /= steps
+            logger.info(f"GAN imputation {i+1}, epoch {epoch+1}: Generator loss = {epoch_g_loss:.6f}")
             if epoch_g_loss < best_g_loss:
                 best_g_loss = epoch_g_loss
                 patience_counter = 0
             else:
                 patience_counter += 1
             if patience_counter >= patience:
+                logger.info(f"GAN imputation {i+1}: Early stopping at epoch {epoch+1}")
                 break
         
         # Impute
@@ -293,8 +301,8 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
 # Documentation
 """
 Functions:
-- missforest_imputation: Imputes X1, X2 with Random Forest (5 imputations)
-- mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations)
+- missforest_imputation: Imputes X1, X2 with Random Forest (5 imputations), using iterative mean initialization
+- mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations), using iterative mean initialization
 - autoencoder_imputation: Imputes X1, X2 with Autoencoder (5 imputations, PyTorch)
 - gain_imputation: Imputes X1, X2 with GAIN-like GAN (5 imputations, PyTorch, imports models from gan_models.py)
 """

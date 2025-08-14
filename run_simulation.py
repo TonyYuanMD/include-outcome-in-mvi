@@ -1,133 +1,93 @@
 import os
-import numpy as np
-import pandas as pd
-from datetime import datetime
+import logging
+from tqdm import tqdm
 from generate_data import generate_data
 from generate_missingness import define_missingness_patterns, apply_missingness
 from impute_stats import impute_datasets
 from evaluate_imputations import evaluate_all_imputations
+import pandas as pd
 
-def run_simulation(num_runs=2, n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3,
-                  include_interactions=False, include_nonlinear=False, include_splines=False,
-                  base_seed=123, output_base_dir="syn_data"):
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('simulation.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger()
+
+def run_simulation(n=1000, p=5, num_runs=2, cont=0.4, sparse=0.3, interactions=False, nonlinear=False, spline=False, seed=123):
     """
-    Run multiple simulations of data generation, missingness, imputation, and evaluation.
+    Run simulation with data generation, missingness, imputation, and evaluation.
     
     Parameters:
+    - n: Number of observations
+    - p: Number of predictors
     - num_runs: Number of simulation runs
-    - n, p, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines: Data generation parameters
-    - base_seed: Base random seed
-    - output_base_dir: Base directory for outputs (will be modified to include parameters)
+    - cont: Proportion of continuous predictors
+    - sparse: Sparsity level
+    - interactions: Include interactions
+    - nonlinear: Include nonlinear terms
+    - spline: Include spline terms
+    - seed: Random seed
     
     Returns:
-    - DataFrame of all results
+    - results: Dictionary of results
     """
-    # Create parameter-specific output directory
-    param_dir = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
-    output_base_dir = os.path.join(output_base_dir, param_dir)
-    os.makedirs(output_base_dir, exist_ok=True)
+    results = {}
+    output_dir = f'syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{cont}_sparse_{sparse}/'
+    os.makedirs(output_dir, exist_ok=True)
     
-    # Generate unique simulation ID (timestamp)
-    sim_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+    logger.info(f"Starting simulation: n={n}, p={p}, runs={num_runs}, seed={seed}")
     
-    results_all = []
-    
-    for run in range(1, num_runs + 1):
-        run_dir = os.path.join(output_base_dir, f'run_{run}')
+    for run in tqdm(range(num_runs), desc="Simulation Runs"):
+        run_dir = os.path.join(output_dir, f'run_{run}')
         os.makedirs(run_dir, exist_ok=True)
         
         # Generate data
-        seed = base_seed + run
-        data, covariates, beta = generate_data(n, p, continuous_pct, integer_pct, sparsity,
-                                              include_interactions, include_nonlinear, include_splines, seed)
-        eval_data, _, _ = generate_data(n, p, continuous_pct, integer_pct, sparsity,
-                                        include_interactions, include_nonlinear, include_splines, seed + 1)
+        logger.info(f"Run {run}: Generating data")
+        data = generate_data(n=n, p=p, cont=cont, sparse=sparse, interactions=interactions, nonlinear=nonlinear, spline=spline, seed=seed + run)
+        data.to_csv(os.path.join(run_dir, 'complete_data.csv'), index=False)
         
-        data.to_csv(os.path.join(run_dir, 'original_data.csv'), index=False)
-        eval_data.to_csv(os.path.join(run_dir, 'eval_data.csv'), index=False)
-        np.savetxt(os.path.join(run_dir, 'true_beta.csv'), np.column_stack((['Intercept'] + covariates, beta)), fmt='%s', delimiter=',')
-        
-        # Apply missingness
-        patterns = define_missingness_patterns(data, seed=seed)
+        # Generate missingness patterns
+        logger.info(f"Run {run}: Applying missingness")
+        patterns = define_missingness_patterns(data, seed=seed + run)
         datasets = {}
-        for pattern, config in patterns.items():
-            datasets[pattern] = apply_missingness(data, config['Mmis'], ['X1', 'X2'], config['vars'], 
-                                                os.path.join(run_dir, config['output']))
+        for name, pattern in patterns.items():
+            datasets[name] = apply_missingness(data, pattern['Mmis'], col_miss=['X1', 'X2'], vars=pattern['vars'], output_file=os.path.join(run_dir, pattern['output']))
+            logger.info(f"Run {run}: Saved {name} dataset with missingness")
         
         # Impute datasets
-        imputed_datasets = impute_datasets(datasets, seed=seed)
+        logger.info(f"Run {run}: Performing imputation")
+        imputed_datasets = impute_datasets(datasets, col_miss=['X1', 'X2'], seed=seed + run)
         
-        # Evaluate imputations
-        true_beta_df = pd.read_csv(os.path.join(run_dir, 'true_beta.csv'), header=None)
-        predictor_names = true_beta_df[0][1:].tolist()
-        true_beta = true_beta_df[1][1:].astype(float).values
-        results = evaluate_all_imputations(imputed_datasets, data, datasets, eval_data, true_beta, predictor_names)
-        results['run'] = run
-        results['sim_id'] = sim_id
-        results.to_csv(os.path.join(run_dir, 'results.csv'), index=False)
-        results_all.append(results)
+        # Save imputed datasets
+        for dataset_name, methods in imputed_datasets.items():
+            for method, imputed in methods.items():
+                for idx, df in enumerate(imputed['full']):
+                    df.to_csv(os.path.join(run_dir, f'{dataset_name}_{method}_imputed_{idx}.csv'), index=False)
+                logger.info(f"Run {run}: Saved {dataset_name} - {method} imputed datasets")
+        
+        # Evaluate
+        logger.info(f"Run {run}: Evaluating imputations")
+        results[run] = evaluate_all_imputations(data, imputed_datasets, output_dir=run_dir)
+        logger.info(f"Run {run}: Evaluation complete")
     
-    # Save combined results
-    all_results = pd.concat(results_all, ignore_index=True)
-    all_results.to_csv(os.path.join(output_base_dir, 'results_all_runs.csv'), index=False)
+    # Aggregate results
+    logger.info("Aggregating results across runs")
+    results_all = pd.concat([results[run]['results_all'] for run in range(num_runs)])
+    results_averaged = results_all.groupby(['missingness', 'method', 'y']).mean().reset_index()
+    results_all.to_csv(os.path.join(output_dir, 'results_all_runs.csv'), index=False)
+    results_averaged.to_csv(os.path.join(output_dir, 'results_averaged.csv'), index=False)
     
-    # Save averaged results
-    averaged_results = all_results.pivot_table(
-        index=['dataset', 'outcome', 'method', 'predictor'],
-        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
-        aggfunc='mean'
-    ).reset_index()
-    averaged_results['sim_id'] = sim_id
-    averaged_results.to_csv(os.path.join(output_base_dir, 'results_averaged.csv'), index=False)
-    
-    # Save metadata
-    metadata = pd.DataFrame([{
-        'sim_id': sim_id,
-        'num_runs': num_runs,
-        'n': n,
-        'p': p,
-        'continuous_pct': continuous_pct,
-        'integer_pct': integer_pct,
-        'sparsity': sparsity,
-        'include_interactions': include_interactions,
-        'include_nonlinear': include_nonlinear,
-        'include_splines': include_splines,
-        'base_seed': base_seed,
-        'output_dir': output_base_dir
-    }])
-    metadata_file = os.path.join('syn_data', 'metadata.csv')
-    if os.path.exists(metadata_file):
-        existing_metadata = pd.read_csv(metadata_file)
-        metadata = pd.concat([existing_metadata, metadata], ignore_index=True)
-    metadata.to_csv(metadata_file, index=False)
-    
-    return all_results
-
-# Run simulations
-if __name__ == "__main__":
-    results = run_simulation()
-    print("Simulation Results (Per Run):")
-    print(results.pivot_table(
-        index=['sim_id', 'run', 'dataset', 'outcome', 'method', 'predictor'],
-        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
-        aggfunc='mean'
-    ).reset_index())
-    
-    print("\nAveraged Results Across Runs:")
-    averaged_results = results.pivot_table(
-        index=['sim_id', 'dataset', 'outcome', 'method', 'predictor'],
-        values=['rmse_X1', 'rmse_X2', 'bias', 'sd', 'accuracy', 'auc', 'rmse_pred'],
-        aggfunc='mean'
-    ).reset_index()
-    print(averaged_results)
+    logger.info(f"Simulation complete. Results saved in {output_dir}")
+    return results
 
 # Documentation
 """
-Script: run_simulation.py
-- Description: Runs multiple simulations of data generation, missingness, imputation, and evaluation
-- Outputs: 
-  - Per-run directories (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/run_i/) with original_data.csv, eval_data.csv, true_beta.csv, missing datasets, and results.csv
-  - Combined results (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/results_all_runs.csv)
-  - Averaged results (syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/results_averaged.csv)
-  - Metadata (syn_data/metadata.csv) with simulation parameters and sim_id
+Function:
+- run_simulation: Runs simulation with data generation, missingness, imputation, and evaluation.
+  Saves intermediate datasets and logs progress.
 """

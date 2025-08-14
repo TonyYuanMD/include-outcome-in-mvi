@@ -42,32 +42,32 @@ def define_missingness_patterns(data, col_miss=['X1', 'X2'], seed=123):
     
     patterns = {
         'mcar': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mcar.csv'
         },
         'mar': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mar.csv'
         },
         'mar_type2_y': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mar_type2_y.csv'
         },
         'mar_type2_score': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mar_type2_score.csv'
         },
         'mnar': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mnar.csv'
         },
         'mar_threshold': {
-            'Mmis': pd.DataFrame(0, index=col_miss, columns=['Intercept'] + vars),
+            'Mmis': pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars, dtype=float),
             'vars': vars,
             'output': 'dat_mar_threshold.csv'
         }
