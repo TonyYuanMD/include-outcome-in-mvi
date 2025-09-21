@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-def apply_missingness(data, Mmis, col_miss, vars, output_file):
+def apply_missingness(data, Mmis, col_miss, vars):
     """
     Apply missingness to specified columns based on Mmis matrix.
     
@@ -21,8 +21,7 @@ def apply_missingness(data, Mmis, col_miss, vars, output_file):
         design_matrix = np.column_stack([np.ones(len(dat_miss))] + [dat_miss[v] for v in vars])
         probs = 1 / (1 + np.exp(-design_matrix @ coef))
         dat_miss[var] = dat_miss[var].where(np.random.uniform(size=len(dat_miss)) >= probs, np.nan)
-    dat_miss.to_csv(output_file, index=False)
-    return dat_miss
+    return dat_miss  # No saving here
 
 def define_missingness_patterns(data, col_miss=['X1', 'X2'], seed=123):
     """
