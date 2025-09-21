@@ -11,7 +11,7 @@ import logging
 from tqdm import tqdm
 
 # Import GAN models
-from gan_models import Generator, Discriminator
+from artifacts.models.gan_models import Generator, Discriminator
 
 # Configure logging
 logger = logging.getLogger(__name__)

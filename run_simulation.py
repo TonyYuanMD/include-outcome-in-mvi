@@ -2,8 +2,8 @@ import os
 import logging
 from tqdm import tqdm
 import pandas as pd
-from data.raw.generate_data import generate_data
-from data.processed.generate_missingness import define_missingness_patterns, apply_missingness
+from src.pipeline.generate_data import generate_data
+from src.pipeline.generate_missingness import define_missingness_patterns, apply_missingness
 from src.pipeline.impute_stats import impute_datasets
 from src.pipeline.evaluate_imputations import evaluate_all_imputations
 
@@ -42,7 +42,7 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
         raise ValueError(f"integer_pct={integer_pct} is negative. Adjust continuous_pct={continuous_pct} and sparsity={sparsity} so their sum <= 1.")
 
     results = {}
-    output_dir = f'syn_data/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/'
+    output_dir = f'results/report/n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}/'
     os.makedirs(output_dir, exist_ok=True)
     
     logger.info(f"Starting simulation: n={n}, p={p}, runs={num_runs}, seed={seed}")
