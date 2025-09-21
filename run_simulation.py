@@ -1,18 +1,18 @@
 import os
 import logging
 from tqdm import tqdm
+import pandas as pd
 from generate_data import generate_data
 from generate_missingness import define_missingness_patterns, apply_missingness
 from impute_stats import impute_datasets
 from evaluate_imputations import evaluate_all_imputations
-import pandas as pd
 
-# Configure logging
+# Configure logging (high-level only)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('simulation.log'),
+        logging.FileHandler('simulation.log.txt'),
         logging.StreamHandler()
     ]
 )
@@ -71,22 +71,16 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
         patterns = define_missingness_patterns(data, seed=seed + run)
         datasets = {}
         for name, pattern in patterns.items():
-            datasets[name] = apply_missingness(
-                data,
-                pattern['Mmis'],
-                col_miss=['X1', 'X2'],
-                vars=pattern['vars'],
-                output_file=os.path.join(run_dir, pattern['output'])
-            )
+            datasets[name] = apply_missingness(data, pattern['Mmis'], col_miss=['X1', 'X2'], vars=pattern['vars'], output_file=os.path.join(run_dir, pattern['output']))
             logger.info(f"Run {run}: Saved {name} dataset with missingness")
         
         # Impute datasets
         logger.info(f"Run {run}: Performing imputation")
-        imputed_datasets = impute_datasets(datasets, col_miss=['X1', 'X2'], seed=seed + run)
-        
-        # Save imputed datasets
-        for dataset_name, methods in imputed_datasets.items():
-            for method, imputed in methods.items():
+        imputed_datasets = {}
+        for dataset_name, dataset_data in datasets.items():
+            logger.info(f"Run {run}: Imputing {dataset_name}")
+            imputed_datasets[dataset_name] = impute_datasets(dataset_data, data, col_miss=['X1', 'X2'], seed=seed + run)  # Pass data as complete
+            for method, imputed in imputed_datasets[dataset_name].items():
                 for idx, df in enumerate(imputed['full']):
                     df.to_csv(os.path.join(run_dir, f'{dataset_name}_{method}_imputed_{idx}.csv'), index=False)
                 logger.info(f"Run {run}: Saved {dataset_name} - {method} imputed datasets")
@@ -99,19 +93,12 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
     # Aggregate results
     logger.info("Aggregating results across runs")
     results_all = pd.concat([results[run]['results_all'] for run in range(num_runs)])
-    results_averaged = results_all.groupby(['missingness', 'method', 'y']).mean().reset_index()
     results_all.to_csv(os.path.join(output_dir, 'results_all_runs.csv'), index=False)
+    results_averaged = results_all.groupby(['missingness', 'method', 'y']).mean().reset_index()
     results_averaged.to_csv(os.path.join(output_dir, 'results_averaged.csv'), index=False)
     
     logger.info(f"Simulation complete. Results saved in {output_dir}")
-    return results
+    return results_all, results_averaged
 
 if __name__ == "__main__":
-    results = run_simulation(num_runs=1)  # Default to 1 run for testing
-
-# Documentation
-"""
-Function:
-- run_simulation: Runs simulation with data generation, missingness, imputation, and evaluation.
-  Saves intermediate datasets and logs progress.
-"""
+    results_all, results_averaged = run_simulation(num_runs=1, n=500)  # Default to 1 run for testing

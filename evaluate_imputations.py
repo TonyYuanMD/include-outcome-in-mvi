@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import mean_squared_error, log_loss
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,14 @@ def evaluate_imputation(true_data, imputed_data, y='y'):
         X_imputed = dat[predictors]
         y_imputed = dat[y]
         
+        # Check for NaNs in X_imputed
+        if X_imputed.isna().any().any():
+            nan_cols = X_imputed.columns[X_imputed.isna().any()].tolist()
+            logger.error(f"NaN values found in X_imputed for y={y}, columns: {nan_cols}")
+            # Fallback: Fill NaNs with mean for evaluation
+            X_imputed = X_imputed.fillna(X_imputed.mean())
+            logger.warning(f"Filled NaNs with column means for evaluation: {nan_cols}")
+        
         model.fit(X_imputed, y_imputed)
         y_pred = model.predict(X_true)
         if y == 'y_score':
@@ -49,6 +58,14 @@ def evaluate_imputation(true_data, imputed_data, y='y'):
         for dat in imputed_data:
             X_imputed = dat[predictors]
             y_imputed = dat[y]
+            
+            # Check for NaNs in X_imputed
+            if X_imputed.isna().any().any():
+                nan_cols = X_imputed.columns[X_imputed.isna().any()].tolist()
+                logger.error(f"NaN values found in X_imputed for y={y}, columns: {nan_cols}")
+                X_imputed = X_imputed.fillna(X_imputed.mean())
+                logger.warning(f"Filled NaNs with column means for evaluation: {nan_cols}")
+            
             model.fit(X_imputed, y_imputed)
             y_pred = model.predict(true_data[predictors])
             estimates.append(y_pred)

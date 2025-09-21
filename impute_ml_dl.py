@@ -16,7 +16,7 @@ from gan_models import Generator, Discriminator
 # Configure logging
 logger = logging.getLogger(__name__)
 
-def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
+def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=2, seed=123):
     """
     Impute missing values using Random Forest (MissForest-like) with iterative mean initialization.
     """
@@ -27,21 +27,25 @@ def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2
         predictors.append(outcome)
     
     for i in tqdm(range(n_imputations), desc="MissForest Imputations", leave=False):
-        # Initialize with mean imputation
+        # Initialize with mean imputation, fallback to 0 if mean is NaN
         dat_imputed = data.copy()
         for col in col_miss:
-            dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
+            if dat_imputed[col].isna().all():
+                logger.warning(f"All values in {col} are NaN, initializing with 0")
+                dat_imputed[col] = dat_imputed[col].fillna(0)
+            else:
+                dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
         
         # Iterate until convergence or max iterations
         max_iter = 10
         tol = 0.001
-        logger.info(f"MissForest imputation {i+1}/{n_imputations}: Starting iterations")
+        logger.info(f"Starting MissForest imputation {i+1}/{n_imputations}")
         for iteration in range(max_iter):
             old_imputed = dat_imputed[col_miss].copy()
             for col in col_miss:
                 mask = ~data[col].isna()
                 if mask.sum() < 50:
-                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MissForest, iteration {iteration}, keeping mean imputation")
+                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MissForest, iteration {iteration}, keeping mean/zero imputation")
                     logger.warning(f"MissForest: Too few complete cases for {col}, iteration {iteration}")
                     continue
                 X_train = dat_imputed.loc[mask, [p for p in predictors if p != col]]
@@ -54,7 +58,6 @@ def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2
                     dat_imputed.loc[mask_missing, col] = model.predict(X_missing)
             # Check convergence
             diff = ((dat_imputed[col_miss] - old_imputed) ** 2).mean().mean()
-            logger.info(f"MissForest imputation {i+1}, iteration {iteration+1}: Convergence diff = {diff:.6f}")
             if diff < tol:
                 logger.info(f"MissForest imputation {i+1}: Converged at iteration {iteration+1}")
                 break
@@ -65,7 +68,7 @@ def missforest_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2
         dat_imputed_list.append(dat_imputed)
     return dat_imputed_list
 
-def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
+def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=2, seed=123):
     """
     Impute missing values using MLP Regressor with iterative mean initialization and scaling.
     """
@@ -76,21 +79,25 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
         predictors.append(outcome)
     
     for i in tqdm(range(n_imputations), desc="MLP Imputations", leave=False):
-        # Initialize with mean imputation
+        # Initialize with mean imputation, fallback to 0 if mean is NaN
         dat_imputed = data.copy()
         for col in col_miss:
-            dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
+            if dat_imputed[col].isna().all():
+                logger.warning(f"All values in {col} are NaN, initializing with 0")
+                dat_imputed[col] = dat_imputed[col].fillna(0)
+            else:
+                dat_imputed[col] = dat_imputed[col].fillna(dat_imputed[col].mean())
         
         # Iterate until convergence or max iterations
         max_iter = 10
         tol = 0.001
-        logger.info(f"MLP imputation {i+1}/{n_imputations}: Starting iterations")
+        logger.info(f"Starting MLP imputation {i+1}/{n_imputations}")
         for iteration in range(max_iter):
             old_imputed = dat_imputed[col_miss].copy()
             for col in col_miss:
                 mask = ~data[col].isna()
                 if mask.sum() < 50:
-                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MLP, iteration {iteration}, keeping mean imputation")
+                    warnings.warn(f"Too few complete cases ({mask.sum()}) for {col} in MLP, iteration {iteration}, keeping mean/zero imputation")
                     logger.warning(f"MLP: Too few complete cases for {col}, iteration {iteration}")
                     continue
                 X_train = dat_imputed.loc[mask, [p for p in predictors if p != col]]
@@ -114,7 +121,6 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
                     dat_imputed.loc[mask_missing, col] = model.predict(X_missing_scaled)
             # Check convergence
             diff = ((dat_imputed[col_miss] - old_imputed) ** 2).mean().mean()
-            logger.info(f"MLP imputation {i+1}, iteration {iteration+1}: Convergence diff = {diff:.6f}")
             if diff < tol:
                 logger.info(f"MLP imputation {i+1}: Converged at iteration {iteration+1}")
                 break
@@ -125,7 +131,7 @@ def mlp_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_i
         dat_imputed_list.append(dat_imputed)
     return dat_imputed_list
 
-def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
+def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=2, seed=123):
     """
     Impute missing values using an Autoencoder (PyTorch) with GPU support if available.
     """
@@ -137,7 +143,7 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
     
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Autoencoder using device: {device}")
+    logger.info(f"Starting Autoencoder imputation on device {device}")
     
     # Normalize data
     data_norm = data[predictors].copy()
@@ -176,7 +182,7 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
         best_loss = float('inf')
         patience = 10
         patience_counter = 0
-        logger.info(f"AE imputation {i+1}/{n_imputations}: Starting training")
+        logger.info(f"Starting AE imputation {i+1}/{n_imputations}")
         for epoch in range(50):
             optimizer.zero_grad()
             output = model(data_tensor)
@@ -189,7 +195,6 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
                 patience_counter = 0
             else:
                 patience_counter += 1
-            logger.info(f"AE imputation {i+1}, epoch {epoch+1}: Loss = {loss_value:.6f}")
             if patience_counter >= patience:
                 logger.info(f"AE imputation {i+1}: Early stopping at epoch {epoch+1}")
                 break
@@ -206,10 +211,14 @@ def autoencoder_imputation(data, original_data, outcome=None, col_miss=['X1', 'X
         for out in ['y', 'y_score']:
             if out in original_data.columns and out not in dat_imputed.columns:
                 dat_imputed[out] = original_data[out]
+        # Check for NaNs in output
+        if dat_imputed[col_miss].isna().any().any():
+            logger.error(f"NaN values remain in AE imputed data for columns: {col_miss}")
+            dat_imputed[col_miss] = dat_imputed[col_miss].fillna(0)
         dat_imputed_list.append(dat_imputed)
     return dat_imputed_list
 
-def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=5, seed=123):
+def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=2, seed=123):
     """
     Impute missing values using a GAIN-like GAN in PyTorch with GPU support if available.
     """
@@ -221,7 +230,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
     
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"GAIN using device: {device}")
+    logger.info(f"Starting GAIN imputation on device {device}")
     
     # Normalize data
     data_norm = data[predictors].copy()
@@ -249,7 +258,7 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
         best_g_loss = float('inf')
         patience = 10
         patience_counter = 0
-        logger.info(f"GAN imputation {i+1}/{n_imputations}: Starting training")
+        logger.info(f"Starting GAIN imputation {i+1}/{n_imputations}")
         for epoch in range(50):
             epoch_g_loss = 0
             for _ in range(steps):
@@ -293,14 +302,13 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
             
             # Early stopping
             epoch_g_loss /= steps
-            logger.info(f"GAN imputation {i+1}, epoch {epoch+1}: Generator loss = {epoch_g_loss:.6f}")
             if epoch_g_loss < best_g_loss:
                 best_g_loss = epoch_g_loss
                 patience_counter = 0
             else:
                 patience_counter += 1
             if patience_counter >= patience:
-                logger.info(f"GAN imputation {i+1}: Early stopping at epoch {epoch+1}")
+                logger.info(f"GAIN imputation {i+1}: Early stopping at epoch {epoch+1}")
                 break
         
         # Impute
@@ -316,14 +324,18 @@ def gain_imputation(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_
         for out in ['y', 'y_score']:
             if out in original_data.columns and out not in dat_imputed.columns:
                 dat_imputed[out] = original_data[out]
+        # Check for NaNs in output
+        if dat_imputed[col_miss].isna().any().any():
+            logger.error(f"NaN values remain in GAIN imputed data for columns: {col_miss}")
+            dat_imputed[col_miss] = dat_imputed[col_miss].fillna(0)
         dat_imputed_list.append(dat_imputed)
     return dat_imputed_list
 
 # Documentation
 """
 Functions:
-- missforest_imputation: Imputes X1, X2 with Random Forest (5 imputations), using iterative mean initialization
-- mlp_imputation: Imputes X1, X2 with MLP Regressor (5 imputations), using iterative mean initialization and scaling
-- autoencoder_imputation: Imputes X1, X2 with Autoencoder (5 imputations, PyTorch, GPU support)
-- gain_imputation: Imputes X1, X2 with GAIN-like GAN (5 imputations, PyTorch, GPU support, imports models from gan_models.py)
+- missforest_imputation: Imputes X1, X2 with Random Forest (2 imputations), using iterative mean initialization
+- mlp_imputation: Imputes X1, X2 with MLP Regressor (2 imputations), using iterative mean initialization and scaling
+- autoencoder_imputation: Imputes X1, X2 with Autoencoder (2 imputations, PyTorch, GPU support)
+- gain_imputation: Imputes X1, X2 with GAIN-like GAN (2 imputations, PyTorch, GPU support, imports models from gan_models.py)
 """
