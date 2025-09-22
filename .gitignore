@@ -2,7 +2,12 @@
 __pycache__/
 *.pyc
 
-syn_data/
+data/raw/
+artifacts/missing/
+artifacts/imputed/
+results/figures/
+results/tables/
+*.log.txt
 
 # VS Code settings
 .vscode/

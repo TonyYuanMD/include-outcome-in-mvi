@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.linear_model import LinearRegression
-from impute_ml_dl import missforest_imputation, mlp_imputation, autoencoder_imputation, gain_imputation
+from .impute_ml_dl import missforest_imputation, mlp_imputation, autoencoder_imputation, gain_imputation
 import logging
 
 logger = logging.getLogger(__name__)
