@@ -65,9 +65,9 @@ def run_single_simulation(args):
                 df.to_csv(imputed_file, index=False)
             logger.info(f"Run {run}: Saved {dataset_name} - {method} imputed datasets")
     
-    # Evaluate (unchanged)
+    # Evaluate (unchanged logic, just return result)
     logger.info(f"Run {run}: Evaluating imputations")
-    eval_result = evaluate_all_imputations(data, imputed_datasets, output_dir=f'results/report/{param_suffix}/')
+    eval_result = evaluate_all_imputations(data, imputed_datasets, output_dir=None)  # No saving here
     logger.info(f"Run {run}: Evaluation complete")
     
     return run, eval_result
@@ -96,8 +96,8 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
         raise ValueError(f"integer_pct={integer_pct} is negative. Adjust continuous_pct={continuous_pct} and sparsity={sparsity} so their sum <= 1.")
 
     results = {}
-    param_suffix = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
-    report_dir = f'results/report/{param_suffix}/'
+    param_base = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
+    report_dir = f'results/report/{param_base}/'
     os.makedirs(report_dir, exist_ok=True)
     
     logger.info(f"Starting simulation: n={n}, p={p}, runs={num_runs}, seed={seed}")
@@ -106,21 +106,49 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
     args_list = [(run, n, p, num_runs, continuous_pct, sparsity, include_interactions, include_nonlinear, include_splines, seed) for run in range(num_runs)]
     
     # Run in parallel
-    with Pool() as pool:  # Use all cores; or Pool(processes=4) to limit
+    with Pool() as pool:
         run_results = pool.map(run_single_simulation, args_list)
     
-    # Collect results into dict
+    # Collect and save results
     results = {run: eval_result for run, eval_result in run_results}
     
-    # Aggregate results (unchanged)
-    logger.info("Aggregating results across runs")
-    results_all = pd.concat([results[run]['results_all'] for run in range(num_runs)])
+    # Save evaluation results for each run
+    all_eval_results = []
+    for run, eval_result in run_results:
+        all_eval_results.append(eval_result['results_all'])
+    eval_results_df = pd.concat(all_eval_results, ignore_index=True)
+    eval_results_df.to_csv(os.path.join(report_dir, 'evaluation_results.csv'), index=False)
+    logger.info(f"Saved evaluation results to {os.path.join(report_dir, 'evaluation_results.csv')}")
+    
+    # Aggregate and save final results with parsed param_set
+    results_all = pd.concat([results[run]['results_all'].assign(param_set=f"{param_base}_run_{run}") for run in range(num_runs)])
+    
+    # Parse param_set into individual columns
+    def parse_param_set(param_str):
+        parts = param_str.split('_')
+        return {
+            'n': int(parts[1]),
+            'p': int(parts[3]),
+            'runs': int(parts[5]),
+            'cont_pct': float(parts[7]),
+            'sparsity': float(parts[9]),
+            'run': int(parts[11]) if len(parts) > 11 else 0  # Handle run number
+        }
+    
+    params_df = results_all['param_set'].apply(parse_param_set).apply(pd.Series)
+    results_all = pd.concat([results_all.drop(columns=['param_set']), params_df], axis=1)
+    
     results_all.to_csv(os.path.join(report_dir, 'results_all_runs.csv'), index=False)
-    results_averaged = results_all.groupby(['missingness', 'method', 'y']).mean().reset_index()
+    logger.info(f"Saved all runs results to {os.path.join(report_dir, 'results_all_runs.csv')}")
+    
+    # Aggregate only metric columns, excluding configuration parameters
+    metric_cols = ['rmse', 'bias']  # Add other metrics as needed based on evaluate_all_imputations output
+    results_averaged = results_all.groupby(['missingness', 'method', 'y'])[metric_cols].mean().reset_index()
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
+    logger.info(f"Saved averaged results to {os.path.join(report_dir, 'results_averaged.csv')}")
     
     logger.info(f"Simulation complete. Results saved in {report_dir}")
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=20, n=100)  # Default to 1 run for testing
+    results_all, results_averaged = run_simulation(num_runs=2, n=50)  # Default to 1 run for testing

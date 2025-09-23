@@ -111,8 +111,6 @@ def evaluate_all_imputations(true_data, imputed_datasets, output_dir):
                 results_all.append(result)
     
     results_all = pd.DataFrame(results_all)
-    results_all.to_csv(os.path.join(output_dir, 'evaluation_results.csv'), index=False)
-    logger.info(f"Saved evaluation results to {output_dir}")
     return {'results_all': results_all}
 
 # Documentation
