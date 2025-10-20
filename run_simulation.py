@@ -151,4 +151,4 @@ def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, in
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=5, n=50)  # Default to 1 run for testing
+    results_all, results_averaged = run_simulation(num_runs=1, n=50)  # Default to 1 run for testing
