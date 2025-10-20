@@ -1,6 +1,6 @@
 """Demonstration examples."""
 
-from simulation import SimulationStudy
+from simulator import SimulationStudy
 from missingness_patterns import MCARPattern
 from imputation_methods import MeanImputation
 

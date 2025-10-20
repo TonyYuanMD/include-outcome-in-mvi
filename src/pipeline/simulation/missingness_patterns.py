@@ -46,7 +46,6 @@ class MCARPattern(MissingnessPattern):
     def name(self):
         return 'mcar'
 
-# Similarly for other patterns
 class MARPattern(MissingnessPattern):
     def apply(self, data, seed=123):
         rng = default_rng(seed)
@@ -67,8 +66,46 @@ class MARPattern(MissingnessPattern):
     def name(self):
         return 'mar'
 
-# Add concrete classes for MARType2Y, MARType2Score, MNAR, MARThreshold similarly, using the coefficient logic from define_missingness_patterns.
-# For brevity, I'll sketch one more:
+class MARType2YPattern(MissingnessPattern):
+    def apply(self, data, seed=123):
+        rng = default_rng(seed)
+        col_miss = ['X1', 'X2']
+        vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
+        dat_miss = data.copy()
+        Mmis = pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars)
+        Mmis.loc['X1', ['Intercept', 'y']] = [-1.5, 0.5]
+        Mmis.loc['X2', ['Intercept', 'y']] = [-1.5, 0.5]
+        for var in col_miss:
+            coef = Mmis.loc[var].values
+            design_matrix = np.column_stack([np.ones(len(dat_miss))] + [dat_miss[v] for v in vars])
+            probs = 1 / (1 + np.exp(-design_matrix @ coef))
+            dat_miss[var] = dat_miss[var].where(rng.uniform(size=len(dat_miss)) >= probs, np.nan)
+        return dat_miss
+    
+    @property
+    def name(self):
+        return 'mar_type2y'
+
+class MARType2ScorePattern(MissingnessPattern):
+    def apply(self, data, seed=123):
+        rng = default_rng(seed)
+        col_miss = ['X1', 'X2']
+        vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
+        dat_miss = data.copy()
+        Mmis = pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars)
+        Mmis.loc['X1', ['Intercept', 'y_score']] = [-1.5, 0.5]
+        Mmis.loc['X2', ['Intercept', 'y_score']] = [-1.5, 0.5]
+        for var in col_miss:
+            coef = Mmis.loc[var].values
+            design_matrix = np.column_stack([np.ones(len(dat_miss))] + [dat_miss[v] for v in vars])
+            probs = 1 / (1 + np.exp(-design_matrix @ coef))
+            dat_miss[var] = dat_miss[var].where(rng.uniform(size=len(dat_miss)) >= probs, np.nan)
+        return dat_miss
+    
+    @property
+    def name(self):
+        return 'mar_type2score'
+
 class MNARPattern(MissingnessPattern):
     def apply(self, data, seed=123):
         rng = default_rng(seed)
@@ -89,4 +126,22 @@ class MNARPattern(MissingnessPattern):
     def name(self):
         return 'mnar'
 
-# Implement the remaining: MARType2YPattern, MARType2ScorePattern, MARThresholdPattern.
+class MARThresholdPattern(MissingnessPattern):
+    def apply(self, data, seed=123):
+        rng = default_rng(seed)
+        col_miss = ['X1', 'X2']
+        vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
+        dat_miss = data.copy()
+        Mmis = pd.DataFrame(0.0, index=col_miss, columns=['Intercept'] + vars)
+        Mmis.loc['X1', ['Intercept', 'X3']] = [-1.5, 0.5]
+        Mmis.loc['X2', ['Intercept', 'X4']] = [-1.5, 0.5]
+        for var in col_miss:
+            coef = Mmis.loc[var].values
+            design_matrix = np.column_stack([np.ones(len(dat_miss))] + [dat_miss[v] for v in vars])
+            probs = 1 / (1 + np.exp(-design_matrix @ coef))
+            dat_miss[var] = dat_miss[var].where((dat_miss[var] > 0) | (rng.uniform(size=len(dat_miss)) >= probs), np.nan)
+        return dat_miss
+    
+    @property
+    def name(self):
+        return 'mar_threshold'

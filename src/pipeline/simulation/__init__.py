@@ -24,8 +24,8 @@ simulator : Study orchestration
 main : Example scripts
 """
 
-from .data_generators import generate_data
-from .missingness_patterns import (
+from data_generators import generate_data
+from missingness_patterns import (
     MissingnessPattern,
     MCARPattern,
     MARPattern,
@@ -34,7 +34,7 @@ from .missingness_patterns import (
     MNARPattern,
     MARThresholdPattern
 )
-from .imputation_methods import (
+from imputation_methods import (
     ImputationMethod,
     CompleteData,
     MeanImputation,
