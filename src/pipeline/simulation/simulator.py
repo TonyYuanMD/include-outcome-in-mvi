@@ -46,7 +46,7 @@ class SimulationStudy:
         results = {}
         for pattern in missingness_patterns:
             for method in imputation_methods:
-                key = f"{pattern.name}_{method.name}"
+                key = f"{pattern.name} {method.name}"
                 results[key] = self.run_scenario(pattern, method)
         return results
     
