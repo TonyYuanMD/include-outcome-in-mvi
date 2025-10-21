@@ -1,8 +1,8 @@
 """Demonstration examples."""
 
-from simulator import SimulationStudy
-from missingness_patterns import MCARPattern
-from imputation_methods import MeanImputation
+from src.pipeline.simulation.simulator import SimulationStudy
+from src.pipeline.simulation.missingness_patterns import MCARPattern
+from src.pipeline.simulation.imputation_methods import MeanImputation
 
 def example_basic():
     study = SimulationStudy(n=500, num_runs=1, seed=123)

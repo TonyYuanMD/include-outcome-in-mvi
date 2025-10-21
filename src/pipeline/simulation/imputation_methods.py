@@ -43,13 +43,8 @@ class CompleteData(ImputationMethod):
     def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
         dat_complete = data.dropna(subset=col_miss)
         if len(dat_complete) == 0:
-            logger.error(f"No complete cases remain after dropping rows with missing values in {col_miss}")
-            dat_complete = original_data.copy()
-            for col in col_miss:
-                if dat_complete[col].isna().all():
-                    dat_complete[col] = dat_complete[col].fillna(0)
-                else:
-                    dat_complete[col] = dat_complete[col].fillna(dat_complete[col].mean())
+            logger.warning(f"No complete cases remain after dropping rows with missing values in {col_miss}. Returning original data unchanged.")
+            return [original_data.copy()]  # Return original data without imputation
         return [dat_complete]
     
     @property

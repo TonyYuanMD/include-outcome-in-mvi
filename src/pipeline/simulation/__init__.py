@@ -24,8 +24,8 @@ simulator : Study orchestration
 main : Example scripts
 """
 
-from data_generators import generate_data
-from missingness_patterns import (
+from src.pipeline.simulation.data_generators import generate_data
+from src.pipeline.simulation.missingness_patterns import (
     MissingnessPattern,
     MCARPattern,
     MARPattern,
@@ -34,7 +34,7 @@ from missingness_patterns import (
     MNARPattern,
     MARThresholdPattern
 )
-from imputation_methods import (
+from src.pipeline.simulation.imputation_methods import (
     ImputationMethod,
     CompleteData,
     MeanImputation,
@@ -45,8 +45,8 @@ from imputation_methods import (
     AutoencoderImputation,
     GAINImputation
 )
-from .evaluator import evaluate_all_imputations
-from .simulator import SimulationStudy
+from src.pipeline.simulation.evaluator import evaluate_all_imputations
+from src.pipeline.simulation.simulator import SimulationStudy
 
 __version__ = '1.0.0'
 
