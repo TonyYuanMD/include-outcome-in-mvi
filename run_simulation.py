@@ -3,12 +3,20 @@ import os
 import logging
 from tqdm import tqdm
 import pandas as pd
-from src.pipeline.generate_data import generate_data
-from src.pipeline.generate_missingness import define_missingness_patterns, apply_missingness
-from src.pipeline.impute_stats import impute_datasets
-from src.pipeline.evaluate_imputations import evaluate_all_imputations
+from itertools import product
+from src.pipeline.simulation.data_generators import generate_data
+from src.pipeline.simulation.missingness_patterns import (
+    MCARPattern, MARPattern, MARType2YPattern, MARType2ScorePattern, MNARPattern, MARThresholdPattern
+)
+from src.pipeline.simulation.imputation_methods import (
+    CompleteData, MeanImputation, SingleImputation, MICEImputation,
+    MissForestImputation, MLPImputation, AutoencoderImputation, GAINImputation
+)
+from src.pipeline.simulation.evaluator import evaluate_all_imputations
+from src.pipeline.simulation.simulator import SimulationStudy
+from numpy.random import default_rng
 
-# Configure logging (high-level only)
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -19,136 +27,152 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-def run_single_simulation(args):
-    run, n, p, num_runs, continuous_pct, sparsity, include_interactions, include_nonlinear, include_splines, seed = args
+def run_single_combination(args):
+    param_set, seed = args
+    n, p, num_runs, continuous_pct, sparsity, include_interactions, include_nonlinear, include_splines = param_set
+    
+    # Create parameter suffix for directory and file naming
     param_suffix = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
-    run_suffix = f'run_{run}'
     
-    # Define sub-dirs (unchanged)
-    raw_dir = f'data/raw/{param_suffix}/{run_suffix}/'
-    missing_dir = f'artifacts/missing/{param_suffix}/{run_suffix}/'
-    imputed_dir = f'artifacts/imputed/{param_suffix}/{run_suffix}/'
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(missing_dir, exist_ok=True)
-    os.makedirs(imputed_dir, exist_ok=True)
+    # Define sub-dirs
+    report_dir = f'results/report/{param_suffix}/'
+    os.makedirs(report_dir, exist_ok=True)
     
-    # Generate data (unchanged)
-    logger.info(f"Run {run}: Generating data")
-    data, covariates, beta = generate_data(
-        n=n, p=p, continuous_pct=continuous_pct, integer_pct=1 - continuous_pct - sparsity,
-        sparsity=sparsity, include_interactions=include_interactions,
-        include_nonlinear=include_nonlinear, include_splines=include_splines,
-        seed=seed + run
-    )
-    data.to_csv(os.path.join(raw_dir, 'complete_data.csv'), index=False)
+    # Initialize SimulationStudy for this parameter set
+    study = SimulationStudy(n=n, p=p, num_runs=num_runs, continuous_pct=continuous_pct, sparsity=sparsity,
+                            include_interactions=include_interactions, include_nonlinear=include_nonlinear,
+                            include_splines=include_splines, seed=seed)
     
-    # Apply missingness (unchanged, but save here)
-    logger.info(f"Run {run}: Applying missingness")
-    patterns = define_missingness_patterns(data, seed=seed + run)
-    datasets = {}
-    for name, pattern in patterns.items():
-        dat_miss = apply_missingness(data, pattern['Mmis'], col_miss=['X1', 'X2'], vars=pattern['vars'])
-        missing_file = os.path.join(missing_dir, f'{name}_data.csv')
-        dat_miss.to_csv(missing_file, index=False)
-        datasets[name] = dat_miss
-        logger.info(f"Run {run}: Saved {name} dataset with missingness")
+    # Define missingness patterns and imputation methods
+    missingness_patterns = [
+        MCARPattern(),
+        MARPattern(),
+        MARType2YPattern(),
+        MARType2ScorePattern(),
+        MNARPattern(),
+        MARThresholdPattern()
+    ]
     
-    # Impute datasets (unchanged)
-    logger.info(f"Run {run}: Performing imputation")
-    imputed_datasets = {}
-    for dataset_name, dataset_data in datasets.items():
-        logger.info(f"Run {run}: Imputing {dataset_name}")
-        imputed_datasets[dataset_name] = impute_datasets(dataset_data, data, col_miss=['X1', 'X2'], seed=seed + run)
-        for method, imputed in imputed_datasets[dataset_name].items():
-            for idx, df in enumerate(imputed['full']):
-                imputed_file = os.path.join(imputed_dir, f'{dataset_name}_{method}_imputed_{idx}.csv')
-                df.to_csv(imputed_file, index=False)
-            logger.info(f"Run {run}: Saved {dataset_name} - {method} imputed datasets")
+    imputation_methods = [
+        CompleteData(),
+        MeanImputation(),
+        SingleImputation(use_outcome=None),
+        SingleImputation(use_outcome='y'),
+        SingleImputation(use_outcome='y_score'),
+        MICEImputation(use_outcome=None),
+        MICEImputation(use_outcome='y'),
+        MICEImputation(use_outcome='y_score'),
+        MissForestImputation(use_outcome=None),
+        MissForestImputation(use_outcome='y'),
+        MissForestImputation(use_outcome='y_score'),
+        MLPImputation(use_outcome=None),
+        MLPImputation(use_outcome='y'),
+        MLPImputation(use_outcome='y_score'),
+        AutoencoderImputation(use_outcome=None),
+        AutoencoderImputation(use_outcome='y'),
+        AutoencoderImputation(use_outcome='y_score'),
+        GAINImputation(use_outcome=None),
+        GAINImputation(use_outcome='y'),
+        GAINImputation(use_outcome='y_score')
+    ]
     
-    # Evaluate (unchanged logic, just return result)
-    logger.info(f"Run {run}: Evaluating imputations")
-    eval_result = evaluate_all_imputations(data, imputed_datasets, output_dir=None)  # No saving here
-    logger.info(f"Run {run}: Evaluation complete")
+    # Run all combinations of patterns and methods
+    logger.info(f"Running simulation for param_set: {param_suffix}")
+    results = study.run_all(missingness_patterns, imputation_methods)
     
-    return run, eval_result
+    # Aggregate results
+    results_all = pd.concat([pd.DataFrame([result]).assign(missingness=pattern.name, method=method.name) 
+                             for (pattern, method), result in results.items()], ignore_index=True)
+    results_all['param_set'] = param_suffix
+    
+    return param_set, results_all
 
-def run_simulation(n=1000, p=5, num_runs=2, continuous_pct=0.4, sparsity=0.3, include_interactions=False, include_nonlinear=False, include_splines=False, seed=123):
+def run_simulation(
+    n=[50, 100],  # Default range for number of observations
+    p=[5],        # Default range for number of predictors
+    num_runs=1,   # Number of runs per parameter combination
+    continuous_pct=[0.4],  # Proportion of continuous predictors
+    sparsity=[0.3],        # Sparsity level
+    include_interactions=[False],  # Include interactions
+    include_nonlinear=[False],     # Include nonlinear terms
+    include_splines=[False],       # Include splines
+    seed=123
+):
     """
-    Run simulation with data generation, missingness, imputation, and evaluation.
+    Run simulation with full factorial design using the refactored framework.
     
     Parameters:
-    - n: Number of observations
-    - p: Number of predictors
-    - num_runs: Number of simulation runs
-    - continuous_pct: Proportion of continuous predictors
-    - sparsity: Sparsity level for coefficients
-    - include_interactions: Include pairwise interaction terms
-    - include_nonlinear: Include sin, cos transformations
-    - include_splines: Include spline basis expansion
+    - n: List of number of observations to test
+    - p: List of number of predictors to test
+    - num_runs: Number of simulation runs per parameter combination
+    - continuous_pct: List of proportions of continuous predictors
+    - sparsity: List of sparsity levels
+    - include_interactions: List of boolean flags for interactions
+    - include_nonlinear: List of boolean flags for nonlinear terms
+    - include_splines: List of boolean flags for splines
     - seed: Random seed
     
     Returns:
-    - results: Dictionary of results
+    - results_all: DataFrame with all results
+    - results_averaged: DataFrame with averaged metrics
     """
-    # Validate integer_pct
-    integer_pct = 1 - continuous_pct - sparsity
-    if integer_pct < 0:
-        raise ValueError(f"integer_pct={integer_pct} is negative. Adjust continuous_pct={continuous_pct} and sparsity={sparsity} so their sum <= 1.")
+    # Validate integer_pct for all combinations
+    for cont_pct, sparse in product(continuous_pct, sparsity):
+        integer_pct = 1 - cont_pct - sparse
+        if integer_pct < 0:
+            raise ValueError(f"integer_pct={integer_pct} is negative for continuous_pct={cont_pct} and sparsity={sparse}. Sum must be <= 1.")
 
-    results = {}
-    param_base = f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_sparse_{sparsity}'
-    report_dir = f'results/report/{param_base}/'
-    os.makedirs(report_dir, exist_ok=True)
+    logger.info(f"Starting full factorial simulation with seed={seed}")
+
+    # Generate all parameter combinations
+    param_combinations = list(product(n, p, [num_runs], continuous_pct, sparsity,
+                                      include_interactions, include_nonlinear, include_splines))
     
-    logger.info(f"Starting simulation: n={n}, p={p}, runs={num_runs}, seed={seed}")
-    
-    # Prepare arguments for each run
-    args_list = [(run, n, p, num_runs, continuous_pct, sparsity, include_interactions, include_nonlinear, include_splines, seed) for run in range(num_runs)]
+    # Prepare arguments for each combination
+    args_list = [(param_set, seed + i) for i, param_set in enumerate(param_combinations)]
     
     # Run in parallel
     with Pool() as pool:
-        run_results = pool.map(run_single_simulation, args_list)
-    
+        run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
+
     # Collect and save results
-    results = {run: eval_result for run, eval_result in run_results}
+    all_results = []
+    for param_set, results_df in run_results:
+        all_results.append(results_df)
     
-    # Save evaluation results for each run
-    all_eval_results = []
-    for run, eval_result in run_results:
-        all_eval_results.append(eval_result['results_all'])
-    eval_results_df = pd.concat(all_eval_results, ignore_index=True)
-    eval_results_df.to_csv(os.path.join(report_dir, 'evaluation_results.csv'), index=False)
-    logger.info(f"Saved evaluation results to {os.path.join(report_dir, 'evaluation_results.csv')}")
-    
-    # Aggregate and save final results with parsed param_set
-    results_all = pd.concat([results[run]['results_all'].assign(param_set=f"{param_base}_run_{run}") for run in range(num_runs)])
+    results_all = pd.concat(all_results, ignore_index=True)
     
     # Parse param_set into individual columns
-    def parse_param_set(param_str):
-        parts = param_str.split('_')
+    def parse_param_set(param_suffix):
+        parts = param_suffix.split('_')
         return {
             'n': int(parts[1]),
             'p': int(parts[3]),
             'runs': int(parts[5]),
             'cont_pct': float(parts[7]),
-            'sparsity': float(parts[9]),
-            'run': int(parts[11]) if len(parts) > 11 else 0  # Handle run number
+            'sparsity': float(parts[9])
         }
     
     params_df = results_all['param_set'].apply(parse_param_set).apply(pd.Series)
     results_all = pd.concat([results_all.drop(columns=['param_set']), params_df], axis=1)
     
+    # Define the base param for report dir
+    param_base = f'n_{min(n)}_{max(n)}_p_{min(p)}_{max(p)}_runs_{num_runs}_cont_{min(continuous_pct)}_{max(continuous_pct)}_sparse_{min(sparsity)}_{max(sparsity)}'
+    report_dir = f'results/report/{param_base}/'
+    os.makedirs(report_dir, exist_ok=True)
+    
     results_all.to_csv(os.path.join(report_dir, 'results_all_runs.csv'), index=False)
     logger.info(f"Saved all runs results to {os.path.join(report_dir, 'results_all_runs.csv')}")
-    
-    # Aggregate only metric columns, excluding configuration parameters
-    metric_cols = ['rmse', 'bias']  # Add other metrics as needed based on evaluate_all_imputations output
-    results_averaged = results_all.groupby(['missingness', 'method', 'y'])[metric_cols].mean().reset_index()
+
+    # Aggregate metrics
+    metric_cols = ['mse_mean', 'r2_mean', 'log_loss_mean']  # Adjust based on evaluator output
+    results_averaged = results_all.groupby(['missingness', 'method', 'y', 'n', 'p', 'cont_pct', 'sparsity'])[metric_cols].mean().reset_index()
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
     logger.info(f"Saved averaged results to {os.path.join(report_dir, 'results_averaged.csv')}")
-    
-    logger.info(f"Simulation complete. Results saved in {report_dir}")
+
+    logger.info(f"Full factorial simulation complete. Results saved in {report_dir}")
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=1, n=50)  # Default to 1 run for testing
+    results_all, results_averaged = run_simulation(num_runs=1, n=[50], p=[5], continuous_pct=[0.4], sparsity=[0.3],
+                                                  include_interactions=[False], include_nonlinear=[False], include_splines=[False])  # Simple default case
