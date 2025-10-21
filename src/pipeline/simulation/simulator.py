@@ -67,7 +67,7 @@ class SimulationStudy:
         dat_miss = missingness_pattern.apply(train_data_true, seed=rng.integers(0, 2**32))
         
         # 4. Impute TRAINING data (list of imputed datasets)
-        imputed_list = imputation_method.impute(dat_miss, train_data_true, n_imputations=5, seed=rng.integers(0, 2**32))
+        imputed_list = imputation_method.impute(dat_miss, train_data_true, seed=rng.integers(0, 2**32))
         
         # 5. Evaluate utility using TEST data
         # Evaluate performance for the binary outcome 'y'

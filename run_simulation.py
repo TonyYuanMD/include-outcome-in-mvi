@@ -50,9 +50,9 @@ def run_single_combination(args):
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
         SingleImputation(use_outcome='y_score'),
-        # MICEImputation(use_outcome=None),
-        # MICEImputation(use_outcome='y'),
-        # MICEImputation(use_outcome='y_score'),
+        MICEImputation(use_outcome=None),
+        MICEImputation(use_outcome='y'),
+        MICEImputation(use_outcome='y_score'),
         # MissForestImputation(use_outcome=None),
         # MissForestImputation(use_outcome='y'),
         # MissForestImputation(use_outcome='y_score'),
@@ -212,11 +212,15 @@ def run_simulation(
 
     # Aggregate metrics
     metric_cols = [
-    'y_log_loss_mean', 'y_mse_mean', 'y_r2_mean', 
-    'y_score_mse_mean', 'y_score_r2_mean', 'y_score_log_loss_mean'
+        'y_log_loss_mean', 'y_log_loss_std', 
+        'y_score_mse_mean', 'y_score_mse_std', 
+        'y_score_r2_mean', 'y_score_r2_std'
     ]
-    results_averaged = results_all.groupby(['missingness', 'method', 'imputation_outcome_used', 'n', 'p', 'cont_pct', 'int_pct',
-                                            'sparsity', 'interactions', 'nonlinear', 'splines'])[metric_cols].mean().reset_index()
+    results_averaged = results_all.groupby([
+        'missingness', 'method', 'imputation_outcome_used', 
+        'n', 'p', 'cont_pct', 'int_pct',
+        'sparsity', 'interactions', 'nonlinear', 'splines'
+    ])[metric_cols].mean().reset_index()
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
     logger.info(f"Saved averaged results to {os.path.join(report_dir, 'results_averaged.csv')}")
 
@@ -224,5 +228,5 @@ def run_simulation(
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=1, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
-                                                  include_interactions=[False], include_nonlinear=[False], include_splines=[False])  # Simple default case
+    results_all, results_averaged = run_simulation(num_runs=3, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
+                                                  include_interactions=[False], include_nonlinear=[False], include_splines=[False])
