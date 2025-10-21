@@ -26,12 +26,12 @@ class ImputationMethod(ABC):
     """Abstract base class for imputation methods.
     
     All imputation methods must implement:
-    - impute(data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123): Return list of imputed DataFrames
+    - impute(data, original_data, col_miss=['X1', 'X2'], seed=123): Return list of imputed DataFrames
     - name: Property for descriptive name
     """
     
     @abstractmethod
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123): # Removed outcome and n_imputations
         pass
     
     @property
@@ -40,7 +40,7 @@ class ImputationMethod(ABC):
         pass
 
 class CompleteData(ImputationMethod):
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
         dat_complete = data.dropna(subset=col_miss)
         if len(dat_complete) == 0:
             logger.warning(f"No complete cases remain after dropping rows with missing values in {col_miss}. Returning original data unchanged.")
@@ -52,7 +52,7 @@ class CompleteData(ImputationMethod):
         return 'complete_data'
 
 class MeanImputation(ImputationMethod):
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
         dat_imputed = data.copy()
         for col in col_miss:
             if dat_imputed[col].isna().all():
@@ -70,7 +70,7 @@ class SingleImputation(ImputationMethod):
     def __init__(self, use_outcome=None):
         self.use_outcome = use_outcome  # 'y', 'y_score', or None
     
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=1, seed=123):
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         dat_imputed = data.copy()
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
         if self.use_outcome:
@@ -102,19 +102,17 @@ class SingleImputation(ImputationMethod):
         return 'single_without'
 
 class MICEImputation(ImputationMethod):
-    def __init__(self, use_outcome=None, n_imputations=2):
+    def __init__(self, use_outcome=None, n_imputations=5):
         self.use_outcome = use_outcome
         self.n_imputations = n_imputations
     
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
-        if n_imputations is None:
-            n_imputations = self.n_imputations
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         rng = default_rng(seed)
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
-        for _ in tqdm(range(n_imputations), desc="MICE Imputations", leave=False):
+        for _ in tqdm(range(self.n_imputations), desc="MICE Imputations", leave=False):
             imp = IterativeImputer(max_iter=10, random_state=rng.integers(0, 10000))
             dat_imputed = data.copy()
             X = dat_imputed[predictors + col_miss]
@@ -135,19 +133,17 @@ class MICEImputation(ImputationMethod):
         return 'mice_without'
 
 class MissForestImputation(ImputationMethod):
-    def __init__(self, use_outcome=None, n_imputations=2):
+    def __init__(self, use_outcome=None, n_imputations=5):
         self.use_outcome = use_outcome
         self.n_imputations = n_imputations
     
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
-        if n_imputations is None:
-            n_imputations = self.n_imputations
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         rng = default_rng(seed)
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
-        for _ in tqdm(range(n_imputations), desc="MissForest Imputations", leave=False):
+        for _ in tqdm(range(self.n_imputations), desc="MissForest Imputations", leave=False):
             dat_imputed = data.copy()
             for col in col_miss:
                 mask = ~data[col].isna()
@@ -178,20 +174,18 @@ class MissForestImputation(ImputationMethod):
         return 'missforest_without'
 
 class MLPImputation(ImputationMethod):
-    def __init__(self, use_outcome=None, n_imputations=2):
+    def __init__(self, use_outcome=None, n_imputations=5):
         self.use_outcome = use_outcome
         self.n_imputations = n_imputations
     
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
-        if n_imputations is None:
-            n_imputations = self.n_imputations
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         rng = default_rng(seed)
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
         scaler = StandardScaler()
-        for _ in tqdm(range(n_imputations), desc="MLP Imputations", leave=False):
+        for _ in tqdm(range(self.n_imputations), desc="MLP Imputations", leave=False):
             dat_imputed = data.copy()
             for col in col_miss:
                 mask = ~data[col].isna()
@@ -224,14 +218,12 @@ class MLPImputation(ImputationMethod):
         return 'mlp_without'
 
 class AutoencoderImputation(ImputationMethod):
-    def __init__(self, use_outcome=None, n_imputations=2, hidden_dims=(64, 32, 64)):
+    def __init__(self, use_outcome=None, n_imputations=5, hidden_dims=(64, 32, 64)):
         self.use_outcome = use_outcome
         self.n_imputations = n_imputations
         self.hidden_dims = hidden_dims
     
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
-        if n_imputations is None:
-            n_imputations = self.n_imputations
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         rng = default_rng(seed)
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
@@ -260,7 +252,7 @@ class AutoencoderImputation(ImputationMethod):
         criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         scaler = StandardScaler()
-        for _ in tqdm(range(n_imputations), desc="Autoencoder Imputations", leave=False):
+        for _ in tqdm(range(self.n_imputations), desc="Autoencoder Imputations", leave=False):
             dat_imputed = data.copy()
             X = dat_imputed[predictors + col_miss].fillna(0)  # Initial imputation
             X_scaled = scaler.fit_transform(X)
@@ -295,16 +287,14 @@ class AutoencoderImputation(ImputationMethod):
         return 'autoencoder_without'
 
 class GAINImputation(ImputationMethod):
-    def __init__(self, use_outcome=None, n_imputations=2, alpha=100, hidden_dim=128):
+    def __init__(self, use_outcome=None, n_imputations=5, alpha=100, hidden_dim=128):
         self.use_outcome = use_outcome
         self.n_imputations = n_imputations
         self.alpha = alpha
         self.hidden_dim = hidden_dim
     
     # In imputation_methods.py, within GAINImputation class
-    def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
-        if n_imputations is None:
-            n_imputations = self.n_imputations
+    def impute(self, data, original_data, col_miss=['X1', 'X2'], seed=123):
         rng = default_rng(seed)
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
@@ -331,7 +321,7 @@ class GAINImputation(ImputationMethod):
         optimizer_g = optim.Adam(model.generator.parameters(), lr=0.001)
         optimizer_d = optim.Adam(model.discriminator.parameters(), lr=0.001)
         scaler = StandardScaler()
-        for _ in tqdm(range(n_imputations), desc="GAIN Imputations", leave=False):
+        for _ in tqdm(range(self.n_imputations), desc="GAIN Imputations", leave=False):
             dat_imputed = data.copy()
             X = dat_imputed[predictors + col_miss].fillna(0)
             X_scaled = scaler.fit_transform(X)
