@@ -60,21 +60,21 @@ def run_single_combination(args):
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
         SingleImputation(use_outcome='y_score'),
-        # MICEImputation(use_outcome=None),
-        # MICEImputation(use_outcome='y'),
-        # MICEImputation(use_outcome='y_score'),
-        # MissForestImputation(use_outcome=None),
-        # MissForestImputation(use_outcome='y'),
-        # MissForestImputation(use_outcome='y_score'),
-        # MLPImputation(use_outcome=None),
-        # MLPImputation(use_outcome='y'),
-        # MLPImputation(use_outcome='y_score'),
-        # AutoencoderImputation(use_outcome=None),
-        # AutoencoderImputation(use_outcome='y'),
-        # AutoencoderImputation(use_outcome='y_score'),
-        # GAINImputation(use_outcome=None),
-        # GAINImputation(use_outcome='y'),
-        # GAINImputation(use_outcome='y_score')
+        MICEImputation(use_outcome=None),
+        MICEImputation(use_outcome='y'),
+        MICEImputation(use_outcome='y_score'),
+        MissForestImputation(use_outcome=None),
+        MissForestImputation(use_outcome='y'),
+        MissForestImputation(use_outcome='y_score'),
+        MLPImputation(use_outcome=None),
+        MLPImputation(use_outcome='y'),
+        MLPImputation(use_outcome='y_score'),
+        AutoencoderImputation(use_outcome=None),
+        AutoencoderImputation(use_outcome='y'),
+        AutoencoderImputation(use_outcome='y_score'),
+        GAINImputation(use_outcome=None),
+        GAINImputation(use_outcome='y'),
+        GAINImputation(use_outcome='y_score')
     ]
     
     # Run all combinations of patterns and methods
@@ -87,9 +87,12 @@ def run_single_combination(args):
     for key, result in results.items():
         # Extract pattern and method from string key
         pattern_name, method_name = key.split(' ')
+        # Get the use_outcome from the method (if applicable)
+        method_instance = next((m for m in imputation_methods if m.name == method_name), None)
+        outcome = getattr(method_instance, 'use_outcome', None) if method_instance else None
         result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
         result_df = pd.DataFrame([result_dict])
-        result_df = result_df.assign(missingness=pattern_name, method=method_name, param_set=param_suffix)
+        result_df = result_df.assign(missingness=pattern_name, method=method_name, y=outcome or 'none', param_set=param_suffix)
         all_results.append(result_df)
     
     results_all = pd.concat(all_results, ignore_index=True)
@@ -97,7 +100,7 @@ def run_single_combination(args):
     return param_set, results_all
 
 def run_simulation(
-    n=[50],  # Default to simple case
+    n=[50],
     p=[5],        
     num_runs=1,   
     continuous_pct=[0.4],  
