@@ -9,17 +9,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def evaluate_imputation(true_data, imputed_list, y='y'):
+def evaluate_imputation(imputed_list, test_data, y='y'):
     """
-    Evaluate the quality of imputed data compared to true data for a specific outcome.
+    Evaluate the utility of imputed data using a downstream prediction model
+    (LinearRegression for y_score, LogisticRegression for y) evaluated on complete test data.
     
     Args:
-        true_data (pd.DataFrame): Original complete data.
-        imputed_list (list): List of imputed DataFrames.
-        y (str): Column name for outcome variable to evaluate (default 'y').
+        imputed_list (list): List of imputed TRAINING DataFrames.
+        test_data (pd.DataFrame): Complete TEST Data (Ground Truth).
+        y (str): Column name for outcome variable ('y' or 'y_score').
     
     Returns:
-        dict: Dictionary of evaluation metrics (e.g., MSE, R², log loss) averaged across imputations.
+        dict: Dictionary of evaluation metrics averaged across imputations.
     """
     metrics = {}
     n_imputations = len(imputed_list)
@@ -27,46 +28,61 @@ def evaluate_imputation(true_data, imputed_list, y='y'):
     if n_imputations == 0:
         logger.warning("No imputations provided, returning empty metrics.")
         return metrics
+
+    # Predictor columns: all columns present in data except both outcomes
+    outcome_cols = ['y', 'y_score']
+    predictors = [col for col in test_data.columns if col not in outcome_cols]
+    
+    if not all(col in test_data.columns for col in predictors + [y]):
+        logger.error(f"Test data missing required columns for {y} prediction.")
+        return metrics
+
+    # Prepare Test Data
+    X_test = test_data[predictors]
+    y_test = test_data[y]
     
     # Initialize lists to store metrics across imputations
     mse_values = []
-    r2_values = []
     log_loss_values = []
-    
-    for imputed in imputed_list:
-        if y not in true_data.columns or y not in imputed.columns:
-            logger.warning(f"Outcome {y} not found in true_data or imputed data, skipping.")
-            continue
+    r2_values = []
+
+    for imputed_train in imputed_list:
+        X_train = imputed_train[predictors]
+        y_train = imputed_train[y]
         
-        # Use only complete cases for comparison
-        mask = true_data[y].notna() & imputed[y].notna()
-        if mask.sum() == 0:
-            logger.warning(f"No complete cases for {y}, skipping imputation evaluation.")
+        # --- Safeguard for stability: Imputed data should ideally be clean ---
+        if X_train.isna().any().any():
+             logger.warning("NaNs detected in imputed covariates X_train. Skipping this imputation run.")
+             continue
+        if X_test.isna().any().any():
+            logger.warning("NaNs detected in X_test. Skipping this imputation run.")
             continue
+        # --------------------------------------------------------------------
+        
+        if y == 'y_score': # Continuous outcome -> Linear Regression
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
             
-        y_true = true_data.loc[mask, y]
-        y_imputed = imputed.loc[mask, y]
-        
-        # Calculate MSE
-        mse = mean_squared_error(y_true, y_imputed)
-        mse_values.append(mse)
-        
-        # Fit a model to estimate R² (using true data as baseline)
-        model = LinearRegression()
-        model.fit(np.arange(len(y_true)).reshape(-1, 1), y_true)
-        y_pred_baseline = model.predict(np.arange(len(y_true)).reshape(-1, 1))
-        r2 = 1 - (mean_squared_error(y_true, y_imputed) / mean_squared_error(y_true, y_pred_baseline))
-        r2_values.append(r2)
-        
-        # Calculate log loss if y is binary (assuming 0/1 for simplicity)
-        if y_true.nunique() == 2 and set(y_true).issubset({0, 1}):
-            # Fit logistic regression to get probabilities
-            log_reg = LogisticRegression()
-            log_reg.fit(np.arange(len(y_true)).reshape(-1, 1), y_true)
-            y_pred_prob = log_reg.predict_proba(np.arange(len(y_true)).reshape(-1, 1))[:, 1]
-            log_loss_val = log_loss(y_true, y_pred_prob)
-            log_loss_values.append(log_loss_val)
-    
+            # Calculate metrics for continuous outcome
+            mse_values.append(mean_squared_error(y_test, y_pred))
+            r2_values.append(model.score(X_test, y_test))
+            
+        elif y == 'y': # Binary outcome -> Logistic Regression
+            # Use liblinear for convergence and simpler models, set max_iter for stability
+            model = LogisticRegression(solver='liblinear', random_state=123, max_iter=100)
+            try:
+                model.fit(X_train, y_train)
+            except Exception as e:
+                logger.error(f"LogisticRegression fit failed: {e}")
+                continue # Skip if model fails to fit
+            
+            # Use predict_proba for Log Loss
+            y_pred_proba = model.predict_proba(X_test)[:, 1]
+            
+            # Calculate Log Loss
+            log_loss_values.append(log_loss(y_test, y_pred_proba))
+            
     # Average metrics across imputations
     if mse_values:
         metrics['mse_mean'] = np.mean(mse_values)

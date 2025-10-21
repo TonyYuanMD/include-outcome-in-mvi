@@ -49,7 +49,7 @@ def run_single_combination(args):
         CompleteData(), MeanImputation(), 
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
-        SingleImputation(use_outcome='y_score')
+        SingleImputation(use_outcome='y_score'),
         # MICEImputation(use_outcome=None),
         # MICEImputation(use_outcome='y'),
         # MICEImputation(use_outcome='y_score'),
@@ -85,17 +85,35 @@ def run_single_combination(args):
         results = study.run_all(missingness_patterns, imputation_methods)
         
         # Aggregate results for THIS RUN (your existing code)
-        expected_metrics = ['mse_mean', 'mse_std', 'r2_mean', 'r2_std', 'log_loss_mean', 'log_loss_std']
+        expected_metrics = [
+            # Binary Outcome 'y' Metrics
+            'y_log_loss_mean', 'y_log_loss_std',
+            
+            # Continuous Outcome 'y_score' Metrics
+            'y_score_mse_mean', 'y_score_mse_std',
+            'y_score_r2_mean', 'y_score_r2_std',
+            
+            # (The others like 'y_mse_mean', 'y_score_log_loss_mean' are omitted)
+        ]
         run_results = []
         for key, result in results.items():
             pattern_name, method_name = key.split(' ')
+            # The 'y' column in the results DF now represents the outcome used in the IMPUTATION process (None, 'y', or 'y_score')
             method_instance = next((m for m in imputation_methods if m.name == method_name), None)
-            outcome = getattr(method_instance, 'use_outcome', None) if method_instance else None
-            result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
+            imputation_outcome_used = getattr(method_instance, 'use_outcome', None) if method_instance else None
+            result_dict = {
+                # result is the single dict from run_scenario, containing all prefixed metrics
+                key: result.get(key, np.nan) for key in expected_metrics
+            }
+            
             result_df = pd.DataFrame([result_dict])
             result_df = result_df.assign(
-                missingness=pattern_name, method=method_name, y=outcome or 'none', 
-                param_set=param_suffix, run_idx=run_idx  # NEW: Add run_idx
+                missingness=pattern_name, 
+                method=method_name, 
+                # This 'imputation_outcome_used' column is crucial for analysis
+                imputation_outcome_used=imputation_outcome_used or 'none', 
+                param_set=param_suffix, 
+                run_idx=run_idx  
             )
             run_results.append(result_df)
         
@@ -193,8 +211,11 @@ def run_simulation(
     logger.info(f"Saved all runs results to {os.path.join(report_dir, 'results_all_runs.csv')}")
 
     # Aggregate metrics
-    metric_cols = ['mse_mean', 'r2_mean', 'log_loss_mean']  # Adjust as needed
-    results_averaged = results_all.groupby(['missingness', 'method', 'y', 'n', 'p', 'cont_pct', 'int_pct',
+    metric_cols = [
+    'y_log_loss_mean', 'y_mse_mean', 'y_r2_mean', 
+    'y_score_mse_mean', 'y_score_r2_mean', 'y_score_log_loss_mean'
+    ]
+    results_averaged = results_all.groupby(['missingness', 'method', 'imputation_outcome_used', 'n', 'p', 'cont_pct', 'int_pct',
                                             'sparsity', 'interactions', 'nonlinear', 'splines'])[metric_cols].mean().reset_index()
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
     logger.info(f"Saved averaged results to {os.path.join(report_dir, 'results_averaged.csv')}")
