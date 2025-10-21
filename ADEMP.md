@@ -55,6 +55,7 @@ Design from code, with factors for feasibility ($2^7\times6\times (2+3\times6)=1
 | `n`                     | 500, 1000                                                                         |
 | `p`                     | 5, 10                                                                             |
 | `continuous_pct`        | 0.4, 0.6                                                                          |
+| `integer_pct`           | 0.4                                                                               |
 | `sparsity`              | 0.3, 0.5                                                                          |
 | `include_interactions`  | False, True                                                                       |
 | `include_nonlinear`     | False, True                                                                       |
