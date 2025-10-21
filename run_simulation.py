@@ -15,6 +15,7 @@ from src.pipeline.simulation.imputation_methods import (
 from src.pipeline.simulation.evaluator import evaluate_all_imputations
 from src.pipeline.simulation.simulator import SimulationStudy
 from numpy.random import default_rng
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -80,10 +81,17 @@ def run_single_combination(args):
     logger.info(f"Running simulation for param_set: {param_suffix}")
     results = study.run_all(missingness_patterns, imputation_methods)
     
-    # Aggregate results
-    results_all = pd.concat([pd.DataFrame([result]).assign(missingness=pattern.name, method=method.name) 
-                             for (pattern, method), result in results.items()], ignore_index=True)
-    results_all['param_set'] = param_suffix
+    # Aggregate results with consistent columns
+    expected_metrics = ['mse_mean', 'mse_std', 'r2_mean', 'r2_std', 'log_loss_mean', 'log_loss_std']
+    all_results = []
+    for (pattern, method), result in results.items():
+        # Ensure all expected metrics are present, defaulting to NaN if missing
+        result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
+        result_df = pd.DataFrame([result_dict])
+        result_df = result_df.assign(missingness=pattern.name, method=method.name, param_set=param_suffix)
+        all_results.append(result_df)
+    
+    results_all = pd.concat(all_results, ignore_index=True)
     
     return param_set, results_all
 

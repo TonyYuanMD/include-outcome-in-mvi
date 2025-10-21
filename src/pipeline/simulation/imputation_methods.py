@@ -111,7 +111,7 @@ class MICEImputation(ImputationMethod):
             n_imputations = self.n_imputations
         rng = default_rng(seed)
         dat_imputed_list = []
-        predictors = [col for col in data.columns if col not in ['y', 'y_score']]
+        predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
         for _ in tqdm(range(n_imputations), desc="MICE Imputations", leave=False):
@@ -144,7 +144,7 @@ class MissForestImputation(ImputationMethod):
             n_imputations = self.n_imputations
         rng = default_rng(seed)
         dat_imputed_list = []
-        predictors = [col for col in data.columns if col not in ['y', 'y_score']]
+        predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
         for _ in tqdm(range(n_imputations), desc="MissForest Imputations", leave=False):
@@ -187,7 +187,7 @@ class MLPImputation(ImputationMethod):
             n_imputations = self.n_imputations
         rng = default_rng(seed)
         dat_imputed_list = []
-        predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
+        predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
         scaler = StandardScaler()
@@ -301,6 +301,7 @@ class GAINImputation(ImputationMethod):
         self.alpha = alpha
         self.hidden_dim = hidden_dim
     
+    # In imputation_methods.py, within GAINImputation class
     def impute(self, data, original_data, outcome=None, col_miss=['X1', 'X2'], n_imputations=None, seed=123):
         if n_imputations is None:
             n_imputations = self.n_imputations
@@ -308,8 +309,11 @@ class GAINImputation(ImputationMethod):
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
         if self.use_outcome:
-            predictors.append(self.use_outcome)
-        n_features = len(predictors) + len(col_miss)
+            if self.use_outcome in original_data.columns:
+                predictors.append(self.use_outcome)
+            else:
+                logger.warning(f"Outcome {self.use_outcome} not found in original_data, ignoring.")
+        n_features = len(predictors)  # Only predictors, mask will add len(col_miss)
         class GAIN(nn.Module):
             def __init__(self, input_dim, hidden_dim):
                 super(GAIN, self).__init__()
@@ -337,10 +341,11 @@ class GAINImputation(ImputationMethod):
                 model.train()
                 optimizer_g.zero_grad()
                 g_out, d_out = model(X_tensor, M)
-                g_loss = -torch.mean(torch.log(d_out + 1e-8)) + self.alpha * torch.mean(torch.abs(M * (X_tensor - g_out)))
+                g_loss = -torch.mean(torch.log(d_out + 1e-8)) + self.alpha * torch.mean(torch.abs(M * (X_tensor[:, len(predictors):] - g_out)))
                 g_loss.backward()
                 optimizer_g.step()
                 optimizer_d.zero_grad()
+                d_out = model.discriminator(X_tensor, M, g_out)
                 d_loss = -torch.mean(torch.log(d_out + 1e-8) + torch.log(1 - d_out + 1e-8))
                 d_loss.backward()
                 optimizer_d.step()
@@ -352,7 +357,7 @@ class GAINImputation(ImputationMethod):
             with torch.no_grad():
                 g_out_missing, _ = model(X_missing_tensor, M_missing)
             X_missing_imputed = scaler.inverse_transform(g_out_missing.cpu().numpy())
-            dat_imputed.loc[mask_missing, col_miss] = X_missing_imputed[:, len(predictors):]
+            dat_imputed.loc[mask_missing, col_miss] = X_missing_imputed
             for out in ['y', 'y_score']:
                 if out in original_data.columns and out not in dat_imputed.columns:
                     dat_imputed[out] = original_data[out]
