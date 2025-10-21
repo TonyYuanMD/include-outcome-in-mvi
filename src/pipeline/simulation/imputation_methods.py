@@ -309,7 +309,10 @@ class GAINImputation(ImputationMethod):
         dat_imputed_list = []
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]
         if self.use_outcome:
-            predictors.append(self.use_outcome)
+            if self.use_outcome in original_data.columns:
+                predictors.append(self.use_outcome)
+            else:
+                logger.warning(f"Outcome {self.use_outcome} not found in original_data, ignoring.")
         n_features = len(predictors) + len(col_miss)  # Full features
         class GAIN(nn.Module):
             def __init__(self, input_dim, hidden_dim):
@@ -324,7 +327,7 @@ class GAINImputation(ImputationMethod):
         
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = GAIN(n_features, self.hidden_dim).to(device)
-        criterion = nn.BCELoss()
+        criterion = nn.BCELoss()  # Define but use manually for GAIN-specific loss
         optimizer_g = optim.Adam(model.generator.parameters(), lr=0.001)
         optimizer_d = optim.Adam(model.discriminator.parameters(), lr=0.001)
         scaler = StandardScaler()
@@ -335,17 +338,19 @@ class GAINImputation(ImputationMethod):
             X_tensor = torch.FloatTensor(X_scaled).to(device)
             M = torch.FloatTensor(1 - data[col_miss].isna().astype(int).values).to(device)  # Shape (50, 2)
             # Create full mask: 1 for predictors (observed), M for col_miss
-            M_full = torch.ones_like(X_tensor)  # Shape (50, 6 or similar)
-            M_full[:, len(predictors):] = M  # Set last 2 columns to the actual mask
+            M_full = torch.ones_like(X_tensor)  # Shape (50, n_features)
+            M_full[:, len(predictors):] = M  # Set last len(col_miss) columns to the actual mask
             for epoch in range(1000):
                 model.train()
+                # Generator step
                 optimizer_g.zero_grad()
                 g_out, d_out = model(X_tensor, M_full)
-                g_loss = -torch.mean(torch.log(d_out + 1e-8)) + self.alpha * torch.mean(torch.abs(M_full * (X_tensor - g_out)))
-                g_loss.backward()
+                g_loss = -torch.mean(torch.log(d_out + 1e-8)) + self.alpha * torch.mean(torch.abs(M_full[:, len(predictors):] * (X_tensor[:, len(predictors):] - g_out[:, len(predictors):])))
+                g_loss.backward(retain_graph=True)  # Retain graph for discriminator
                 optimizer_g.step()
+                # Discriminator step
                 optimizer_d.zero_grad()
-                d_out = model.discriminator(X_tensor, M_full, g_out)
+                d_out = model.discriminator(X_tensor, M_full, g_out.detach())  # Detach g_out to avoid double gradients
                 d_loss = -torch.mean(torch.log(d_out + 1e-8) + torch.log(1 - d_out + 1e-8))
                 d_loss.backward()
                 optimizer_d.step()
@@ -353,9 +358,9 @@ class GAINImputation(ImputationMethod):
             X_missing = dat_imputed.loc[mask_missing, predictors + col_miss].fillna(0)
             X_missing_scaled = scaler.transform(X_missing)
             X_missing_tensor = torch.FloatTensor(X_missing_scaled).to(device)
-            M_missing = torch.FloatTensor(1 - X_missing[col_miss].isna().astype(int).values).to(device)  # (missing_batch, 2)
-            M_missing_full = torch.ones_like(X_missing_tensor)  # (missing_batch, full_features)
-            M_missing_full[:, len(predictors):] = M_missing  # Set last 2 columns to M_missing
+            M_missing = torch.FloatTensor(1 - X_missing[col_miss].isna().astype(int).values).to(device)
+            M_missing_full = torch.ones_like(X_missing_tensor)
+            M_missing_full[:, len(predictors):] = M_missing
             with torch.no_grad():
                 g_out_missing, _ = model(X_missing_tensor, M_missing_full)
             X_missing_imputed = scaler.inverse_transform(g_out_missing.cpu().numpy())
