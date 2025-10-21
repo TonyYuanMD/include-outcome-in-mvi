@@ -60,21 +60,21 @@ def run_single_combination(args):
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
         SingleImputation(use_outcome='y_score'),
-        MICEImputation(use_outcome=None),
-        MICEImputation(use_outcome='y'),
-        MICEImputation(use_outcome='y_score'),
-        MissForestImputation(use_outcome=None),
-        MissForestImputation(use_outcome='y'),
-        MissForestImputation(use_outcome='y_score'),
-        MLPImputation(use_outcome=None),
-        MLPImputation(use_outcome='y'),
-        MLPImputation(use_outcome='y_score'),
-        AutoencoderImputation(use_outcome=None),
-        AutoencoderImputation(use_outcome='y'),
-        AutoencoderImputation(use_outcome='y_score'),
-        GAINImputation(use_outcome=None),
-        GAINImputation(use_outcome='y'),
-        GAINImputation(use_outcome='y_score')
+        # MICEImputation(use_outcome=None),
+        # MICEImputation(use_outcome='y'),
+        # MICEImputation(use_outcome='y_score'),
+        # MissForestImputation(use_outcome=None),
+        # MissForestImputation(use_outcome='y'),
+        # MissForestImputation(use_outcome='y_score'),
+        # MLPImputation(use_outcome=None),
+        # MLPImputation(use_outcome='y'),
+        # MLPImputation(use_outcome='y_score'),
+        # AutoencoderImputation(use_outcome=None),
+        # AutoencoderImputation(use_outcome='y'),
+        # AutoencoderImputation(use_outcome='y_score'),
+        # GAINImputation(use_outcome=None),
+        # GAINImputation(use_outcome='y'),
+        # GAINImputation(use_outcome='y_score')
     ]
     
     # Run all combinations of patterns and methods
@@ -84,11 +84,12 @@ def run_single_combination(args):
     # Aggregate results with consistent columns
     expected_metrics = ['mse_mean', 'mse_std', 'r2_mean', 'r2_std', 'log_loss_mean', 'log_loss_std']
     all_results = []
-    for (pattern, method), result in results.items():
-        # Ensure all expected metrics are present, defaulting to NaN if missing
+    for key, result in results.items():
+        # Extract pattern and method from string key
+        pattern_name, method_name = key.split(' ')
         result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
         result_df = pd.DataFrame([result_dict])
-        result_df = result_df.assign(missingness=pattern.name, method=method.name, param_set=param_suffix)
+        result_df = result_df.assign(missingness=pattern_name, method=method_name, param_set=param_suffix)
         all_results.append(result_df)
     
     results_all = pd.concat(all_results, ignore_index=True)
@@ -96,14 +97,14 @@ def run_single_combination(args):
     return param_set, results_all
 
 def run_simulation(
-    n=[50, 100],  # Default range for number of observations
-    p=[5],        # Default range for number of predictors
-    num_runs=1,   # Number of runs per parameter combination
-    continuous_pct=[0.4],  # Proportion of continuous predictors
-    sparsity=[0.3],        # Sparsity level
-    include_interactions=[False],  # Include interactions
-    include_nonlinear=[False],     # Include nonlinear terms
-    include_splines=[False],       # Include splines
+    n=[50],  # Default to simple case
+    p=[5],        
+    num_runs=1,   
+    continuous_pct=[0.4],  
+    sparsity=[0.3],        
+    include_interactions=[False],  
+    include_nonlinear=[False],     
+    include_splines=[False],       
     seed=123
 ):
     """
