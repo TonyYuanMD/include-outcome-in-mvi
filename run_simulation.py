@@ -29,7 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 def run_single_combination(args):
-    param_set, seed = args
+    param_set, parent_rng = args
     n, p, num_runs, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines = param_set
     
     # Create parameter suffix for directory and file naming
@@ -40,27 +40,16 @@ def run_single_combination(args):
     report_dir = f'results/report/{param_suffix}/'
     os.makedirs(report_dir, exist_ok=True)
     
-    # Initialize SimulationStudy for this parameter set
-    study = SimulationStudy(n=n, p=p, num_runs=num_runs, continuous_pct=continuous_pct, integer_pct=integer_pct,  # NEW
-                            sparsity=sparsity, include_interactions=include_interactions,
-                            include_nonlinear=include_nonlinear, include_splines=include_splines, seed=seed)
-    
-    # Define missingness patterns and imputation methods
+    # Define missingness patterns and imputation methods (UNCHANGED)
     missingness_patterns = [
-        MCARPattern(),
-        MARPattern(),
-        MARType2YPattern(),
-        MARType2ScorePattern(),
-        MNARPattern(),
-        MARThresholdPattern()
+        MCARPattern(), MARPattern(), MARType2YPattern(), 
+        MARType2ScorePattern(), MNARPattern(), MARThresholdPattern()
     ]
-    
     imputation_methods = [
-        CompleteData(),
-        MeanImputation(),
+        CompleteData(), MeanImputation(), 
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
-        SingleImputation(use_outcome='y_score'),
+        SingleImputation(use_outcome='y_score')
         # MICEImputation(use_outcome=None),
         # MICEImputation(use_outcome='y'),
         # MICEImputation(use_outcome='y_score'),
@@ -78,25 +67,42 @@ def run_single_combination(args):
         # GAINImputation(use_outcome='y_score')
     ]
     
-    # Run all combinations of patterns and methods
-    logger.info(f"Running simulation for param_set: {param_suffix}")
-    results = study.run_all(missingness_patterns, imputation_methods)
+    all_run_results = []
+    for run_idx in range(num_runs):
+        # Spawn FRESH RNG for each run
+        run_rng = parent_rng.spawn(1)[0]
+        
+        # Create NEW study for each run with run-specific RNG
+        study = SimulationStudy(
+            n=n, p=p, num_runs=1,  # CHANGED: num_runs=1 (handled by loop)
+            continuous_pct=continuous_pct, integer_pct=integer_pct,
+            sparsity=sparsity, include_interactions=include_interactions,
+            include_nonlinear=include_nonlinear, include_splines=include_splines,
+            rng=run_rng  # CHANGED: Pass RNG, NOT seed
+        )
+        
+        logger.info(f"Running simulation for param_set: {param_suffix}, run {run_idx}")
+        results = study.run_all(missingness_patterns, imputation_methods)
+        
+        # Aggregate results for THIS RUN (your existing code)
+        expected_metrics = ['mse_mean', 'mse_std', 'r2_mean', 'r2_std', 'log_loss_mean', 'log_loss_std']
+        run_results = []
+        for key, result in results.items():
+            pattern_name, method_name = key.split(' ')
+            method_instance = next((m for m in imputation_methods if m.name == method_name), None)
+            outcome = getattr(method_instance, 'use_outcome', None) if method_instance else None
+            result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
+            result_df = pd.DataFrame([result_dict])
+            result_df = result_df.assign(
+                missingness=pattern_name, method=method_name, y=outcome or 'none', 
+                param_set=param_suffix, run_idx=run_idx  # NEW: Add run_idx
+            )
+            run_results.append(result_df)
+        
+        all_run_results.append(pd.concat(run_results, ignore_index=True))
     
-    # Aggregate results with consistent columns
-    expected_metrics = ['mse_mean', 'mse_std', 'r2_mean', 'r2_std', 'log_loss_mean', 'log_loss_std']
-    all_results = []
-    for key, result in results.items():
-        # Extract pattern and method from string key
-        pattern_name, method_name = key.split(' ')
-        # Get the use_outcome from the method (if applicable)
-        method_instance = next((m for m in imputation_methods if m.name == method_name), None)
-        outcome = getattr(method_instance, 'use_outcome', None) if method_instance else None
-        result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
-        result_df = pd.DataFrame([result_dict])
-        result_df = result_df.assign(missingness=pattern_name, method=method_name, y=outcome or 'none', param_set=param_suffix)
-        all_results.append(result_df)
-    
-    results_all = pd.concat(all_results, ignore_index=True)
+    # Concatenate ALL RUNS
+    results_all = pd.concat(all_run_results, ignore_index=True)
     
     return param_set, results_all
 
@@ -135,9 +141,6 @@ def run_simulation(
         if cont_pct + int_pct > 1:
             raise ValueError(f"continuous_pct={cont_pct} + integer_pct={int_pct} > 1. Must leave room for binary covariates.")
 
-    param_combinations = list(product(n, p, [num_runs], continuous_pct, integer_pct, sparsity,
-                                      include_interactions, include_nonlinear, include_splines))
-
     logger.info(f"Starting full factorial simulation with seed={seed}")
 
     # Generate all parameter combinations
@@ -145,7 +148,8 @@ def run_simulation(
                                       include_interactions, include_nonlinear, include_splines))
     
     # Prepare arguments for each combination
-    args_list = [(param_set, seed + i) for i, param_set in enumerate(param_combinations)]
+    parent_rng = default_rng(seed)
+    args_list = [(param_set, parent_rng.spawn(1)[0]) for param_set in param_combinations]
     
     # Run in parallel
     with Pool() as pool:

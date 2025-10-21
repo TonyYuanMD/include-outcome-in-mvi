@@ -15,7 +15,11 @@ logger = logging.getLogger()
 
 class SimulationStudy:
     def __init__(self, n=1000, p=5, num_runs=2, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3, 
-                 include_interactions=False, include_nonlinear=False, include_splines=False, seed=123):
+                 include_interactions=False, include_nonlinear=False, include_splines=False, rng=None, seed=None):
+        if rng is not None:
+            self.rng = rng
+        else:
+            self.rng = default_rng(seed)
         self.n = n
         self.p = p
         self.num_runs = num_runs
@@ -34,23 +38,34 @@ class SimulationStudy:
         if not (0 <= self.sparsity <= 1):
             raise ValueError(f"sparsity must be between 0 and 1. Got {self.sparsity}.")
     
-    def run_scenario(self, missingness_pattern, imputation_method):
+    def run_scenario(self, missingness_pattern, imputation_method, rng):
         # Generate data, apply missingness, impute, evaluate
         # Return results dict
-        rng = default_rng(self.seed)
-        data, _, _ = generate_data(self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
-                                   self.include_interactions, self.include_nonlinear, self.include_splines, self.seed)
-        dat_miss = missingness_pattern.apply(data, self.seed)
-        imputed_list = imputation_method.impute(dat_miss, data, n_imputations=2 if 'multiple' in imputation_method.name else 1, seed=self.seed)
+
+        data, _, _ = generate_data(
+            self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
+            self.include_interactions, self.include_nonlinear, self.include_splines,
+            seed=rng.integers(0, 2**32)
+        )
+        
+        dat_miss = missingness_pattern.apply(data, seed=rng.integers(0, 2**32))
+        imputed_list = imputation_method.impute(dat_miss, data, n_imputations=5, seed=rng.integers(0, 2**32))
         metrics = evaluate_imputation(data, imputed_list, y='y')  # Example for y; repeat for y_score
         return metrics
     
     def run_all(self, missingness_patterns, imputation_methods):
         results = {}
+        
+        # Spawn child RNG for EACH scenario (pattern + method combo)
+        scenario_rng = self.rng.spawn(1)[0]  # ONE spawn per scenario
+        
         for pattern in missingness_patterns:
             for method in imputation_methods:
-                key = f"{pattern.name} {method.name}"
-                results[key] = self.run_scenario(pattern, method)
+                # Use the scenario-specific RNG in run_scenario
+                results[f"{pattern.name} {method.name}"] = self.run_scenario(
+                    pattern, method, rng=scenario_rng  # PASS the RNG
+                )
+        
         return results
     
     def run_parallel(self):
