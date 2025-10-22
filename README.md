@@ -18,9 +18,7 @@ The **Include Y in Multivariate Value Imputation (MVI)** project is designed to 
 For a complete setup on a fresh system, please refer to the `SETUP.md` file (not included here). This document provides detailed instructions for:
 
 - Installing dependencies listed in `requirements.txt`.
-    
 - Configuring the project structure (ensuring `__init__.py` files exist in `src/`, `src/pipeline/`, etc.).
-    
 
 # Usage and Pipeline Automation (Using Makefile)
 
@@ -40,9 +38,7 @@ The entire simulation, analysis, and cleaning pipeline is automated using the `M
 To ensure the integrity and stability of the simulation logic:
 
 1. **Navigate to the project root.**
-    
 2. **Execute Pytest:** `make test`
-    
 
 The test suite verifies core mechanisms such as $\text{Log Loss}$ vs. $R^2$ metric selection and the calculation of **Simulation Uncertainty** ($\text{STD}$ across runs).
 
