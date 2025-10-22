@@ -250,5 +250,5 @@ def run_simulation(
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=3, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
+    results_all, results_averaged = run_simulation(num_runs=10, n=[100], p=[10], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
                                                   include_interactions=[False], include_nonlinear=[False], include_splines=[False])

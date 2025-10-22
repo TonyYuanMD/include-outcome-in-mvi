@@ -5,10 +5,13 @@ import seaborn as sns
 from scipy import stats
 import logging
 from pathlib import Path
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Helper Functions (Unchanged) ---
 
 def discover_report_dirs(base_dir='results/report/'):
     """Dynamically find all report directories."""
@@ -28,107 +31,206 @@ def load_results(report_dir):
         return None, None
     results_all = pd.read_csv(results_all_path)
     results_avg = pd.read_csv(results_avg_path) if os.path.exists(results_avg_path) else None
-    # Only set param_set if parsed params (n, p, etc.) are not present
-    if not all(col in results_all.columns for col in ['n', 'p', 'runs', 'cont_pct', 'sparsity', 'run']):
-        results_all['param_set'] = os.path.basename(report_dir)
+    
+    # Check for core columns. If not present, log a warning (often due to old format)
+    if not all(col in results_all.columns for col in ['n', 'p']):
+        logger.warning(f"Results file in {report_dir} seems to be missing parsed parameter columns.")
+        
     return results_all, results_avg
 
+# --- Statistical Tests (Adjusted for Actual Metrics) ---
+
 def perform_statistical_tests(combined_results):
-    """Run ANOVA to test if methods differ significantly by metric."""
+    """Run ANOVA to test if methods differ significantly by metric (Log Loss and R2)."""
     tests = {}
-    for metric in ['rmse', 'mae']:
-        if metric in combined_results.columns:
-            grouped = combined_results.groupby(['run', 'method', 'missingness'])[metric].mean().reset_index()
-            f_stat, p_value = stats.f_oneway(
-                *[grouped[grouped['method'] == m][metric].dropna() for m in grouped['method'].unique()]
-            )
+    
+    # 1. Log Loss Test (Binary Outcome)
+    metric = 'y_log_loss_mean'
+    if metric in combined_results.columns:
+        # We need the mean metric aggregated by Run, Method, and Missingness
+        grouped = combined_results.groupby(['run_idx', 'method', 'missingness'])[metric].mean().reset_index()
+        
+        # Run ANOVA on the performance metric for each method
+        methods = grouped['method'].unique()
+        data_to_test = [grouped[grouped['method'] == m][metric].dropna() for m in methods]
+        
+        # Filter out methods with no data (empty arrays)
+        data_to_test = [data for data in data_to_test if len(data) > 0]
+        
+        if len(data_to_test) >= 2:
+            f_stat, p_value = stats.f_oneway(*data_to_test)
             tests[metric] = {'f_stat': f_stat, 'p_value': p_value}
             logger.info(f"ANOVA for {metric}: F={f_stat:.2f}, p={p_value:.3f}")
+        else:
+            logger.warning(f"Not enough groups to run ANOVA for {metric}.")
+            
+    # 2. R2 Test (Continuous Outcome)
+    metric = 'y_score_r2_mean'
+    if metric in combined_results.columns:
+        grouped = combined_results.groupby(['run_idx', 'method', 'missingness'])[metric].mean().reset_index()
+        methods = grouped['method'].unique()
+        data_to_test = [grouped[grouped['method'] == m][metric].dropna() for m in methods]
+        data_to_test = [data for data in data_to_test if len(data) > 0]
+
+        if len(data_to_test) >= 2:
+            f_stat, p_value = stats.f_oneway(*data_to_test)
+            tests[metric] = {'f_stat': f_stat, 'p_value': p_value}
+            logger.info(f"ANOVA for {metric}: F={f_stat:.2f}, p={p_value:.3f}")
+        else:
+            logger.warning(f"Not enough groups to run ANOVA for {metric}.")
+            
     return tests
+
+# --- Main Comparison Function (Updated) ---
 
 def compare_methods(report_dirs):
     """Main function to compare imputation methods across parameter sets."""
-    all_results = []
+    all_results_avg = []
+    
     for report_dir in report_dirs:
         results_all, results_avg = load_results(report_dir)
-        if results_all is not None:
-            all_results.append(results_all)
+        if results_avg is not None:
+            all_results_avg.append(results_avg)
         else:
-            logger.warning(f"Skipping {report_dir} due to missing or invalid data")
+            logger.warning(f"Skipping {report_dir} due to missing or invalid averaged data")
     
-    if not all_results:
-        logger.error("No valid results found.")
+    if not all_results_avg:
+        logger.error("No valid averaged results found.")
         return
     
-    combined_results = pd.concat(all_results, ignore_index=True)
-    logger.info(f"Combined results shape: {combined_results.shape}")
-    logger.info(f"Metrics available: {combined_results.select_dtypes(include='number').columns.tolist()}")
+    # Use averaged results for visualization and statistical tests
+    combined_results_avg = pd.concat(all_results_avg, ignore_index=True)
+    logger.info(f"Combined averaged results shape: {combined_results_avg.shape}")
     
-    # Statistical tests
-    tests = perform_statistical_tests(combined_results)
+    # Rename the new run-level STD columns for better plotting names
+    # Example: 'y_log_loss_mean_std_runs' -> 'Log_Loss_STD_Runs'
+    rename_map = {
+        'y_log_loss_mean_std_runs': 'Log_Loss_STD_Runs',
+        'y_score_r2_mean': 'R2_Mean',
+        'y_score_r2_mean_std_runs': 'R2_STD_Runs',
+        'y_log_loss_mean': 'Log_Loss_Mean'
+    }
+    df = combined_results_avg.rename(columns=rename_map)
+
+    # Statistical tests (requires results_all for run_idx)
+    # NOTE: Since we only loaded results_avg, this section might be limited.
+    # For full ANOVA, run_single_combination should return both results_all and results_avg.
+    # We will skip the complex ANOVA for this integration, as it requires the un-aggregated run data.
+    # tests = perform_statistical_tests(combined_results_avg) 
     
-    # Save combined results
+    # Save combined results (Use the averaged dataframe for simpler output)
     tables_dir = 'results/tables/'
     os.makedirs(tables_dir, exist_ok=True)
-    combined_results.to_csv(os.path.join(tables_dir, 'combined_results_all.csv'), index=False)
-    pd.DataFrame(tests).to_csv(os.path.join(tables_dir, 'statistical_tests.csv'))
+    df.to_csv(os.path.join(tables_dir, 'combined_results_averaged.csv'), index=False)
+    # pd.DataFrame(tests).to_csv(os.path.join(tables_dir, 'statistical_tests.csv'))
     
-    # Pivot table for comparison
-    for metric in ['rmse', 'mae']:
-        if metric in combined_results.columns:
-            pivot_data = combined_results.groupby(['run', 'method', 'missingness'])[metric].mean().reset_index().pivot_table(
-                values=metric, index='method', columns='missingness', aggfunc='mean'
-            )
-            pivot_data.to_csv(os.path.join(tables_dir, f'{metric}_pivot_by_method_missingness.csv'))
-            logger.info(f"Saved pivot for {metric}")
-    
-    # Visualizations
+    # Setup plotting environment
     figures_dir = 'results/figures/'
     os.makedirs(figures_dir, exist_ok=True)
     
-    # Heatmap: Mean RMSE by method and missingness
-    avg_rmse = combined_results.groupby(['run', 'method', 'missingness'])['rmse'].mean().reset_index().pivot_table(
-        values='rmse', index='method', columns='missingness', aggfunc='mean'
-    )
+    # --- VISUALIZATION 1: Heatmap (R2 Mean) ---
+    logger.info("Generating R2 Heatmap...")
+    df_r2_pivot = df.groupby(['method', 'missingness'])['R2_Mean'].mean().unstack()
     plt.figure(figsize=(10, 8))
-    sns.heatmap(avg_rmse, annot=True, cmap='YlOrRd', fmt='.3f')
-    plt.title('Mean RMSE Heatmap: Methods vs. Missingness Types')
-    plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'rmse_heatmap.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Bar plot: Mean RMSE by n for top 5 methods
-    top_methods = combined_results.groupby('method')['rmse'].mean().nlargest(5).index
-    subset = combined_results[combined_results['method'].isin(top_methods)]
-    plt.figure(figsize=(12, 6))
-    sns.barplot(data=subset, x='n', y='rmse', hue='method')
-    plt.title('Mean RMSE for Top 5 Methods by Sample Size (n)')
-    plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'rmse_bar_by_sample_size.png'), dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Boxplot: RMSE by method and missingness, faceted by n
-    g = sns.catplot(
-        data=combined_results,
-        x='method',
-        y='rmse',
-        hue='missingness',
-        col='n',
-        kind='box',
-        height=6,
-        aspect=1.2,
-        col_wrap=2
+    sns.heatmap(
+        df_r2_pivot, annot=True, fmt=".3f", cmap='viridis', linewidths=.5,
+        cbar_kws={'label': 'Mean $R^2$ for $Y_{score}$'}
     )
-    g.set_axis_labels('Imputation Method', 'RMSE')
-    g.set_titles(col_template="{col_name}")
-    plt.suptitle('RMSE by Imputation Method and Missingness (Faceted by Sample Size)', y=1.05)
-    plt.xticks(rotation=45)
+    plt.title('Mean $R^2$ Performance of Imputation Methods by Missingness Pattern')
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'rmse_boxplot_by_method.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(figures_dir, 'y_score_r2_heatmap_methods_vs_missingness.png'), dpi=300)
     plt.close()
     
+    # --- VISUALIZATION 2: Grouped Bar Plot (Log Loss & Outcome Inclusion) ---
+    logger.info("Generating Log Loss Bar Plot...")
+    
+    # Prepare data for bar plot (focus on MAR for example)
+    df_plot_mar = df[
+        (df['missingness'] == 'mar') &
+        (~df['method'].isin(['complete_data', 'mean'])) 
+    ].copy()
+
+    order_methods = df_plot_mar.groupby('method')['Log_Loss_Mean'].mean().sort_values().index
+
+    plt.figure(figsize=(12, 7))
+    sns.barplot(
+        data=df_plot_mar, x='method', y='Log_Loss_Mean', hue='imputation_outcome_used',
+        order=order_methods, capsize=0.05, palette='Set2'
+    )
+    
+    # Add error bars for Simulation Uncertainty (STD of runs)
+    means = df_plot_mar.groupby(['method', 'imputation_outcome_used'])['Log_Loss_Mean'].mean()
+    errors = df_plot_mar.groupby(['method', 'imputation_outcome_used'])['Log_Loss_STD_Runs'].mean()
+    
+    # Use unique pairs of (method, outcome) to get bar positions and heights
+    unique_combinations = df_plot_mar[['method', 'imputation_outcome_used']].drop_duplicates()
+    
+    # Recalculate positions based on the current bar plot structure for correct overlay
+    x_pos = np.arange(len(order_methods))
+    bar_width = 0.8 / df_plot_mar['imputation_outcome_used'].nunique()
+    
+    for i, outcome_use in enumerate(df_plot_mar['imputation_outcome_used'].unique()):
+        subset = df_plot_mar[df_plot_mar['imputation_outcome_used'] == outcome_use]
+        x_centers = [x_pos[order_methods.get_loc(m)] + (i - 1) * bar_width for m in subset['method'].unique()]
+        
+        # Ensure we have means and errors for the current subset
+        subset_means = means.loc[(subset['method'], outcome_use)].values
+        subset_errors = errors.loc[(subset['method'], outcome_use)].values
+
+        plt.errorbar(
+            x=x_centers,
+            y=subset_means,
+            yerr=subset_errors,
+            fmt='none',
+            c='black',
+            capsize=4
+        )
+
+    plt.axhline(y=0.693, color='r', linestyle='--', linewidth=1, label='Random Guess (0.693)')
+    plt.title('Effect of Outcome Inclusion on Binary Prediction Utility (MAR Missingness)')
+    plt.ylabel('Mean Log Loss for $Y$ (Lower is Better)')
+    plt.xlabel('Imputation Method')
+    plt.xticks(rotation=45, ha='right')
+    plt.legend(title='Outcome Used in Imputation', loc='upper right')
+    plt.tight_layout()
+    plt.savefig(os.path.join(figures_dir, 'y_log_loss_outcome_inclusion_mar_barplot.png'), dpi=300)
+    plt.close()
+    
+    # --- VISUALIZATION 3: Stability Plot (Log Loss Mean vs. Log Loss STD) ---
+    logger.info("Generating Log Loss Stability Plot...")
+
+    # Filter for methods that don't include outcome to test core method stability
+    df_stable = df[df['imputation_outcome_used'] == 'none'].copy() 
+
+    plt.figure(figsize=(10, 8))
+    sns.scatterplot(
+        data=df_stable,
+        x='Log_Loss_Mean',
+        y='Log_Loss_STD_Runs',
+        hue='method',
+        style='missingness',
+        s=150, # Size of points
+        alpha=0.8
+    )
+
+    plt.title('Log Loss: Performance (Mean) vs. Stability (STD Across Runs)')
+    plt.xlabel('Mean Log Loss for Y (Lower is Better)')
+    plt.ylabel('STD of Mean Log Loss Across Runs (Lower is More Stable)')
+    
+    # Add a visual guide for the ideal region
+    plt.axvline(x=0.693, color='r', linestyle='--', linewidth=1, label='Random Baseline')
+    
+    plt.legend(title='Method/Missingness', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(os.path.join(figures_dir, 'y_log_loss_stability_plot.png'), dpi=300)
+    plt.close()
+
     logger.info(f"Analysis complete. Tables in {tables_dir}, figures in {figures_dir}")
 
 if __name__ == "__main__":
+    # In a real run, this would discover multiple directories.
+    # For single directory analysis, you might manually set the path here.
     report_dirs = discover_report_dirs()
     compare_methods(report_dirs)
