@@ -6,11 +6,7 @@
 
 The core purpose of this simulation is to evaluate **predictive utility** under conditions that challenge simple imputation assumptions. The design choices for the Data Generating Processes (DGPs) were made to control complexity and variability:
 
-1. **Mixed Covariate Types:** The inclusion of continuous, integer, and binary variables
-    
-    [different types of data](https://encrypted-tbn0.gstatic.com/licensed-image?q=tbn:ANd9GcTpyWOOm84Jo0IbDvIQQSZU8_zqxmrP_1EkAaXcP_MUDvWaNEAGDh_ycVOMDTXH2p2gHbluSz0-dTRTGrMRKlWNy7CuKCyXlB2pDqWB1s1xvUWxVLc)
-    
-    reflects real-world data, where imputation models must handle diverse distributions.
+1. **Mixed Covariate Types:** The inclusion of continuous, integer, and binary variables reflects real-world data, where imputation models must handle diverse distributions.
     
 2. **Model Complexity Flags (**$\text{Interactions}$**,** $\text{Nonlinear}$**,** $\text{Splines}$**):** These flags allow us to vary the true relationship between $X$ and $Y$. By training a prediction model (Linear/Logistic Regression) on the imputed data, we test if the imputation method can recover complex underlying structures or if it only works when relationships are purely linear.
     
@@ -64,7 +60,7 @@ However, confidence could be undermined by:
 
 Two crucial scenarios were omitted due to scope and complexity:
 
-1. **High-Dimensional Data (**$\mathbf{p \gg n}$**):** We primarily focused on $n \ge p$. In modern contexts, $p$ often far exceeds $n$, which would expose limitations in standard regression-based imputation (MICE) and highlight the need for regularized imputation models.
+1. **High-Dimensional Data (**$\mathbf{p \gg n}$**):** We primarily focused on $n \ge p$. In modern contexts, $p$ often exceeds $n$, which would expose limitations in standard regression-based imputation (MICE) and highlight the need for regularized imputation models.
     
 2. **Non-Continuous Missingness:** We did not introduce missingness into categorical or binary covariates, requiring separate, specialized imputation models (e.g., Logistic Regression within MICE) which would significantly increase implementation time.
     
@@ -78,13 +74,6 @@ The results are valuable for both:
 - **Practice:** They provide clear evidence against using simplistic methods (Mean/Single Imputation) when data is MAR or MNAR, particularly when the downstream goal is prediction. They empirically show that more sophisticated, model-based methods (MICE, GAIN) are necessary.
     
 - **Theory:** The comparison of $\text{with\_y}$ vs. $\text{without}$ directly tests the theoretical concept of **"Using the outcome in imputation."** If $\text{MICE\_with\_y}$ performs significantly better than $\text{MICE\_without}$, it supports the use of outcome data to maximize predictive power, even if it risks introducing bias.
-    
-
-### Next Investigation
-
-If more time were available, the immediate next step would be to:
-
-- **Ramp up Complexity and Sample Size:** Systematically test scenarios with higher $\text{n}$ (e.g., 500, 1000) and higher $\text{p}$ to confirm performance stabilizes and to properly assess the deep learning models (Autoencoder, GAIN), which require large datasets to train effectively.
     
 
 ## Implementation Challenges
