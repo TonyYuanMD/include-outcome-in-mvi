@@ -113,7 +113,7 @@ class MICEImputation(ImputationMethod):
         if self.use_outcome:
             predictors.append(self.use_outcome)
         for _ in tqdm(range(self.n_imputations), desc="MICE Imputations", leave=False):
-            imp = IterativeImputer(max_iter=10, random_state=rng.integers(0, 10000))
+            imp = IterativeImputer(max_iter=10, random_state=rng.integers(0, 10000), sample_posterior=True)
             dat_imputed = data.copy()
             X = dat_imputed[predictors + col_miss]
             X_imputed = pd.DataFrame(imp.fit_transform(X), columns=X.columns, index=X.index)

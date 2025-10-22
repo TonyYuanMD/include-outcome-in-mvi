@@ -216,11 +216,33 @@ def run_simulation(
         'y_score_mse_mean', 'y_score_mse_std', 
         'y_score_r2_mean', 'y_score_r2_std'
     ]
-    results_averaged = results_all.groupby([
+    results_mean = results_all.groupby([
         'missingness', 'method', 'imputation_outcome_used', 
         'n', 'p', 'cont_pct', 'int_pct',
         'sparsity', 'interactions', 'nonlinear', 'splines'
     ])[metric_cols].mean().reset_index()
+    
+    results_std_runs = results_all.groupby([
+        'missingness', 'method', 'imputation_outcome_used', 
+        'n', 'p', 'cont_pct', 'int_pct',
+        'sparsity', 'interactions', 'nonlinear', 'splines'
+    ])[[m for m in metric_cols if m.endswith('_mean')]].std().reset_index()
+
+    # 3. Rename STD columns for clarity (e.g., y_log_loss_mean -> y_log_loss_mean_std_runs)
+    std_col_map = {col: f'{col}_std_runs' for col in results_std_runs.columns if col.endswith('_mean')}
+    results_std_runs = results_std_runs.rename(columns=std_col_map)
+    
+    # 4. Merge mean and std results
+    # Use the original mean columns as the merge key
+    merge_keys = [
+        'missingness', 'method', 'imputation_outcome_used', 
+        'n', 'p', 'cont_pct', 'int_pct',
+        'sparsity', 'interactions', 'nonlinear', 'splines'
+    ]
+    
+    results_averaged = pd.merge(results_mean, results_std_runs, on=merge_keys, how='left')
+    
+    # Save the averaged results
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
     logger.info(f"Saved averaged results to {os.path.join(report_dir, 'results_averaged.csv')}")
 
