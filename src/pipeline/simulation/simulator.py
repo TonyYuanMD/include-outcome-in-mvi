@@ -44,7 +44,7 @@ class SimulationStudy:
         imputes, and evaluates utility on the test set.
         """
         # We generate two datasets to serve as separate, complete TRUE train and test sets.
-        data_train_rng, data_test_rng, miss_rng, impute_rng = run_rng.spawn(3)
+        data_train_rng, data_test_rng, miss_rng, impute_rng = run_rng.spawn(4)
         # 1. Generate TRUE Training Data (for missingness application)
         # Use a spawn of the scenario RNG for data generation
 
@@ -109,7 +109,7 @@ class SimulationStudy:
                 run_rng = scenario_rngs[scenario_idx]
                 
                 # The run_scenario function handles all internal randomness
-                metrics = self.run_scenario(pattern, method, rng=run_rng)
+                metrics = self.run_scenario(pattern, method, run_rng=run_rng)
                 
                 results[f"{pattern.name} {method.name}"] = metrics
                 scenario_idx += 1

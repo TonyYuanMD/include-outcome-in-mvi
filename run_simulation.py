@@ -78,7 +78,7 @@ def run_single_combination(args):
             continuous_pct=continuous_pct, integer_pct=integer_pct,
             sparsity=sparsity, include_interactions=include_interactions,
             include_nonlinear=include_nonlinear, include_splines=include_splines,
-            rng=run_rng  # CHANGED: Pass RNG, NOT seed
+            rng=run_rng
         )
         
         logger.info(f"Running simulation for param_set: {param_suffix}, run {run_idx}")
@@ -170,7 +170,7 @@ def run_simulation(
     args_list = [(param_set, parent_rng.spawn(1)[0]) for param_set in param_combinations]
     
     # Run in parallel
-    with Pool() as pool:
+    with Pool(processes=4) as pool:
         run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
 
     # Collect and save results
@@ -250,5 +250,5 @@ def run_simulation(
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=10, n=[100], p=[10], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
+    results_all, results_averaged = run_simulation(num_runs=2, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
                                                   include_interactions=[False], include_nonlinear=[False], include_splines=[False])
