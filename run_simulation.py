@@ -16,7 +16,11 @@ from src.pipeline.simulation.evaluator import evaluate_all_imputations
 from src.pipeline.simulation.simulator import SimulationStudy
 from numpy.random import default_rng
 import numpy as np
+import yaml, argparse, os
+from pathlib import Path
 
+CONFIG_DIR = Path(__file__).parent / "config"
+# ------------------------------------------------------------------------
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +31,13 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger()
+
+def load_cfg(name: str = "debug.yaml"):
+    path = CONFIG_DIR / name
+    if not path.exists():
+        raise FileNotFoundError(f"Config {name} not found in {CONFIG_DIR}")
+    with open(path) as f:
+        return yaml.safe_load(f)
 
 def run_single_combination(args):
     param_set, parent_rng = args
@@ -250,5 +261,23 @@ def run_simulation(
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=2, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
-                                                  include_interactions=[False], include_nonlinear=[False], include_splines=[False])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="./config/debug.yaml",
+                        help="Config file in config/ folder")
+    args = parser.parse_args()
+
+    cfg = load_cfg(args.config)          # ← ONE SOURCE OF TRUTH
+
+    # Pass everything to your existing function (no other changes needed)
+    results_all, results_averaged = run_simulation(
+        n=cfg["n"],
+        p=cfg["p"],
+        num_runs=cfg["num_runs"],
+        continuous_pct=cfg["continuous_pct"],
+        integer_pct=cfg["integer_pct"],
+        sparsity=cfg["sparsity"],
+        include_interactions=cfg["include_interactions"],
+        include_nonlinear=cfg["include_nonlinear"],
+        include_splines=cfg["include_splines"],
+        seed=cfg["seed"]
+    )
