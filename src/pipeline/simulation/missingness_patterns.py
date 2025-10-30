@@ -9,12 +9,12 @@ class MissingnessPattern(ABC):
     """Abstract base class for missingness patterns.
     
     All missingness patterns must implement:
-    - apply(data, seed=123): Apply missingness to data
+    - apply(data, rng): Apply missingness to data
     - name: Property for descriptive name
     """
     
     @abstractmethod
-    def apply(self, data, seed=123):
+    def apply(self, data, rng):
         """Apply missingness to the data.
         
         Parameters:
@@ -33,8 +33,8 @@ class MissingnessPattern(ABC):
         pass
 
 class MCARPattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         dat_miss = data.copy()
         for var in col_miss:
@@ -47,8 +47,8 @@ class MCARPattern(MissingnessPattern):
         return 'mcar'
 
 class MARPattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
         dat_miss = data.copy()
@@ -67,8 +67,8 @@ class MARPattern(MissingnessPattern):
         return 'mar'
 
 class MARType2YPattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
         dat_miss = data.copy()
@@ -87,8 +87,8 @@ class MARType2YPattern(MissingnessPattern):
         return 'mar_type2y'
 
 class MARType2ScorePattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
         dat_miss = data.copy()
@@ -107,8 +107,8 @@ class MARType2ScorePattern(MissingnessPattern):
         return 'mar_type2score'
 
 class MNARPattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
         dat_miss = data.copy()
@@ -127,8 +127,8 @@ class MNARPattern(MissingnessPattern):
         return 'mnar'
 
 class MARThresholdPattern(MissingnessPattern):
-    def apply(self, data, seed=123):
-        rng = default_rng(seed)
+    def apply(self, data, rng):
+
         col_miss = ['X1', 'X2']
         vars = [col for col in data.columns if col not in ['y', 'y_score']] + ['y', 'y_score']
         dat_miss = data.copy()

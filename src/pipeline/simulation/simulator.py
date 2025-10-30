@@ -38,37 +38,37 @@ class SimulationStudy:
         if not (0 <= self.sparsity <= 1):
             raise ValueError(f"sparsity must be between 0 and 1. Got {self.sparsity}.")
     
-    def run_scenario(self, missingness_pattern, imputation_method, rng):
+    def run_scenario(self, missingness_pattern, imputation_method, run_rng):
         """
         Runs one scenario: generates train/test data, applies missingness to train, 
         imputes, and evaluates utility on the test set.
         """
         # We generate two datasets to serve as separate, complete TRUE train and test sets.
-        
+        data_train_rng, data_test_rng, miss_rng, impute_rng = run_rng.spawn(3)
         # 1. Generate TRUE Training Data (for missingness application)
         # Use a spawn of the scenario RNG for data generation
-        train_data_rng = rng.spawn(1)[0]
+
         train_data_true, _, _ = generate_data(
             self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
             self.include_interactions, self.include_nonlinear, self.include_splines,
-            seed=train_data_rng.integers(0, 2**32)
+            rng=data_train_rng.spawn(1)[0]
         )
         
         # 2. Generate TRUE Test Data (for evaluation)
         # Use another spawn for the test set. Note: Test set size is also 'n'.
-        test_data_rng = rng.spawn(1)[0]
+
         test_data_true, _, _ = generate_data(
             self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
             self.include_interactions, self.include_nonlinear, self.include_splines,
-            seed=test_data_rng.integers(0, 2**32)
+            rng=data_test_rng.spawn(1)[0]
         )
         
         # 3. Apply missingness to TRAINING data
-        dat_miss = missingness_pattern.apply(train_data_true, seed=rng.integers(0, 2**32))
+        dat_miss = missingness_pattern.apply(train_data_true, rng=miss_rng)
         
         # 4. Impute TRAINING data (list of imputed datasets)
-        imputed_list = imputation_method.impute(dat_miss, train_data_true, seed=rng.integers(0, 2**32))
-        
+        imputed_list = imputation_method.impute(dat_miss, train_data_true, rng=impute_rng)
+
         # 5. Evaluate utility using TEST data
         # Evaluate performance for the binary outcome 'y'
         metrics_y = evaluate_imputation(imputed_list, test_data_true, y='y')
@@ -98,21 +98,21 @@ class SimulationStudy:
     def run_all(self, missingness_patterns, imputation_methods):
         results = {}
         
-        # We spawn a single RNG to manage the sequence of scenarios
-        scenario_rng = self.rng.spawn(1)[0] 
+        # --- FIX: Simplify scenario spawning ---
+        # Split the study RNG (self.rng) into streams, one for each scenario (pattern x method)
+        num_scenarios = len(missingness_patterns) * len(imputation_methods)
+        scenario_rngs = self.rng.spawn(num_scenarios)
+        scenario_idx = 0
         
         for pattern in missingness_patterns:
             for method in imputation_methods:
-                # Use a unique spawn for this scenario run's randomness
-                run_rng = scenario_rng.spawn(1)[0]
+                run_rng = scenario_rngs[scenario_idx]
                 
-                # The run_scenario function handles its internal data/missingness RNGs
-                metrics = self.run_scenario(
-                    pattern, method, rng=run_rng
-                )
+                # The run_scenario function handles all internal randomness
+                metrics = self.run_scenario(pattern, method, rng=run_rng)
                 
-                # The metrics are returned with prefixes (y_ and y_score_)
                 results[f"{pattern.name} {method.name}"] = metrics
+                scenario_idx += 1
         
         return results
     

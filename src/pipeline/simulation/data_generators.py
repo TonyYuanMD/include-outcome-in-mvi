@@ -7,7 +7,7 @@ from numpy.random import default_rng
 
 def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3,
                   include_interactions=True, include_nonlinear=True, include_splines=True,
-                  seed=123):
+                  rng=None):
     """
     Generate synthetic data with configurable covariate types and response variables.
     
@@ -27,7 +27,8 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
     - covariates: List of covariate names
     - beta: Coefficient array
     """
-    rng = default_rng(seed)  # Local RNG instance
+    if rng is None:
+        rng = default_rng(123)
     
     # Generate covariates
     num_continuous = int(p * continuous_pct)

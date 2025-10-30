@@ -68,10 +68,10 @@ def run_single_combination(args):
     ]
     
     all_run_results = []
+    run_rngs = parent_rng.spawn(num_runs)
     for run_idx in range(num_runs):
         # Spawn FRESH RNG for each run
-        run_rng = parent_rng.spawn(1)[0]
-        
+        run_rng = run_rngs[run_idx]
         # Create NEW study for each run with run-specific RNG
         study = SimulationStudy(
             n=n, p=p, num_runs=1,  # CHANGED: num_runs=1 (handled by loop)
