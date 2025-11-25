@@ -1,5 +1,9 @@
-# evaluator.py
-"""Evaluation of imputation quality."""
+"""Evaluation of imputation quality.
+
+This module provides functions to evaluate the utility of imputed datasets
+by training downstream prediction models on imputed training data and
+evaluating them on complete test data.
+"""
 
 import numpy as np
 import pandas as pd
@@ -96,14 +100,33 @@ def evaluate_imputation(imputed_list, test_data, y='y'):
     
     return metrics
 
-def evaluate_all_imputations(true_data, imputed_datasets, output_dir):
+def evaluate_all_imputations(true_data, imputed_datasets, output_dir=None):
+    """
+    Evaluate multiple imputation methods across multiple missingness patterns.
+    
+    This is a legacy function for batch evaluation. The recommended approach
+    is to use `evaluate_imputation` directly within the simulation framework.
+    
+    Parameters:
+    -----------
+    true_data : pd.DataFrame
+        Complete ground truth data
+    imputed_datasets : dict
+        Nested dictionary: {missingness_pattern: {method_name: [imputed_dfs]}}
+    output_dir : str, optional
+        Directory to save results (currently not used)
+    
+    Returns:
+    --------
+    dict : Dictionary with 'results_all' key containing a DataFrame of results
+    """
     results_all = []
     for dataset_name, methods in imputed_datasets.items():
         logger.info(f"Evaluating dataset: {dataset_name}")
         for method_name, imputed_list in methods.items():
             for y in ['y', 'y_score']:
                 logger.info(f"Evaluating {dataset_name} - {method_name} - {y}")
-                metrics = evaluate_imputation(true_data, imputed_list, y=y)
+                metrics = evaluate_imputation(imputed_list, true_data, y=y)
                 result = {
                     'missingness': dataset_name,
                     'method': method_name,

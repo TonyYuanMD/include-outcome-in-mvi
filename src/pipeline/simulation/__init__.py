@@ -4,14 +4,12 @@ This package provides a modular framework for simulating and evaluating imputati
 
 Basic Usage
 -----------
->>> from simulation import SimulationStudy
->>> from missingness_patterns import MCARPattern
->>> from imputation_methods import MeanImputation
+>>> from src.pipeline.simulation import SimulationStudy, MCARPattern, MeanImputation
 >>>
 >>> study = SimulationStudy(n=500, num_runs=1, seed=123)
 >>> missingness = MCARPattern()
 >>> imputer = MeanImputation()
->>> results = study.run_scenario(missingness, imputer)
+>>> results = study.run_scenario(missingness, imputer, run_rng=study.rng)
 >>> print(results)
 
 Modules

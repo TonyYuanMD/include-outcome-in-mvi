@@ -20,7 +20,7 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
     - include_interactions: Include pairwise interaction terms
     - include_nonlinear: Include sin, cos transformations
     - include_splines: Include spline basis expansion
-    - seed: Random seed
+    - rng: numpy.random.Generator instance (if None, creates one with seed=123)
     
     Returns:
     - data: DataFrame with covariates, X1_above_threshold, y, y_score

@@ -116,13 +116,13 @@ def compare_methods(report_dirs):
     # NOTE: Since we only loaded results_avg, this section might be limited.
     # For full ANOVA, run_single_combination should return both results_all and results_avg.
     # We will skip the complex ANOVA for this integration, as it requires the un-aggregated run data.
-    # tests = perform_statistical_tests(combined_results_avg) 
+    tests = perform_statistical_tests(combined_results_avg) 
     
     # Save combined results (Use the averaged dataframe for simpler output)
     tables_dir = 'results/tables/'
     os.makedirs(tables_dir, exist_ok=True)
     df.to_csv(os.path.join(tables_dir, 'combined_results_averaged.csv'), index=False)
-    # pd.DataFrame(tests).to_csv(os.path.join(tables_dir, 'statistical_tests.csv'))
+    pd.DataFrame(tests).to_csv(os.path.join(tables_dir, 'statistical_tests.csv'))
     
     # Setup plotting environment
     figures_dir = 'results/figures/'

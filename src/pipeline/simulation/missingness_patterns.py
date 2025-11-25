@@ -19,7 +19,7 @@ class MissingnessPattern(ABC):
         
         Parameters:
         - data: Input DataFrame
-        - seed: Random seed
+        - rng: numpy.random.Generator instance for random number generation
         
         Returns:
         - dat_miss: DataFrame with missing values

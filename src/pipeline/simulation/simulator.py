@@ -7,7 +7,7 @@ import pandas as pd
 from multiprocessing import Pool
 from functools import partial
 from src.pipeline.simulation.data_generators import generate_data
-from src.pipeline.simulation.evaluator import evaluate_all_imputations, evaluate_imputation
+from src.pipeline.simulation.evaluator import evaluate_imputation
 from numpy.random import default_rng
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

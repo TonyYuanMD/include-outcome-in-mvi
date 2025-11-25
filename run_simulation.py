@@ -12,7 +12,6 @@ from src.pipeline.simulation.imputation_methods import (
     CompleteData, MeanImputation, SingleImputation, MICEImputation,
     MissForestImputation, MLPImputation, AutoencoderImputation, GAINImputation
 )
-from src.pipeline.simulation.evaluator import evaluate_all_imputations
 from src.pipeline.simulation.simulator import SimulationStudy
 from numpy.random import default_rng
 import numpy as np
