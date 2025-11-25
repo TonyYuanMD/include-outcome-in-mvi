@@ -201,5 +201,5 @@ def test_05_run_simulation_small_n(caplog):
         run_simulation(n=[20], p=[5], num_runs=1, continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3])
     # If validation for small n is added in the future, check for warning
     # assert any("n too small" in record.message for record in caplog.records)
-    assert "Simulation complete" in caplog.text  # Check that it completes
+    assert "Full factorial simulation complete" in caplog.text  # Check that it completes
 
