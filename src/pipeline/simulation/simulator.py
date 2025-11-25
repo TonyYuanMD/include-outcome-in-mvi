@@ -8,6 +8,7 @@ from multiprocessing import Pool
 from functools import partial
 from src.pipeline.simulation.data_generators import generate_data
 from src.pipeline.simulation.evaluator import evaluate_imputation
+from src.pipeline.simulation.imputation_methods import spawn_rngs
 from numpy.random import default_rng
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,14 +45,14 @@ class SimulationStudy:
         imputes, and evaluates utility on the test set.
         """
         # We generate two datasets to serve as separate, complete TRUE train and test sets.
-        data_train_rng, data_test_rng, miss_rng, impute_rng = run_rng.spawn(4)
+        data_train_rng, data_test_rng, miss_rng, impute_rng = spawn_rngs(run_rng, 4)
         # 1. Generate TRUE Training Data (for missingness application)
         # Use a spawn of the scenario RNG for data generation
 
         train_data_true, _, _ = generate_data(
             self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
             self.include_interactions, self.include_nonlinear, self.include_splines,
-            rng=data_train_rng.spawn(1)[0]
+            rng=spawn_rngs(data_train_rng, 1)[0]
         )
         
         # 2. Generate TRUE Test Data (for evaluation)
@@ -60,7 +61,7 @@ class SimulationStudy:
         test_data_true, _, _ = generate_data(
             self.n, self.p, self.continuous_pct, self.integer_pct, self.sparsity,
             self.include_interactions, self.include_nonlinear, self.include_splines,
-            rng=data_test_rng.spawn(1)[0]
+            rng=spawn_rngs(data_test_rng, 1)[0]
         )
         
         # 3. Apply missingness to TRAINING data
@@ -101,7 +102,7 @@ class SimulationStudy:
         # --- FIX: Simplify scenario spawning ---
         # Split the study RNG (self.rng) into streams, one for each scenario (pattern x method)
         num_scenarios = len(missingness_patterns) * len(imputation_methods)
-        scenario_rngs = self.rng.spawn(num_scenarios)
+        scenario_rngs = spawn_rngs(self.rng, num_scenarios)
         scenario_idx = 0
         
         for pattern in missingness_patterns:

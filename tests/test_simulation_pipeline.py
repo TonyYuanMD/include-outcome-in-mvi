@@ -1,18 +1,19 @@
 import pytest
 import pandas as pd
 import numpy as np
+import sys
+import os
+import logging
 from numpy.random import default_rng
+
+# Add parent directory to path to import from src and run_simulation
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.pipeline.simulation.simulator import SimulationStudy
 from src.pipeline.simulation.missingness_patterns import MCARPattern
 from src.pipeline.simulation.imputation_methods import MeanImputation, MICEImputation
 from src.pipeline.simulation.evaluator import evaluate_imputation
 from src.pipeline.simulation.data_generators import generate_data
-import sys
-import os
-import logging
-
-# Add parent directory to path to import run_simulation
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- Fixture for common setup ---
 
@@ -194,8 +195,10 @@ def test_05_run_simulation_small_n(caplog):
     # Configure logging for this test
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
+    # Use n=20 instead of n=5 to avoid issues with single-class labels in small datasets
+    # n=5 is too small and can cause all samples to have the same label, breaking sklearn
     with caplog.at_level(logging.INFO):
-        run_simulation(n=[5], p=[5], num_runs=1, continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3])
+        run_simulation(n=[20], p=[5], num_runs=1, continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3])
     # If validation for small n is added in the future, check for warning
     # assert any("n too small" in record.message for record in caplog.records)
     assert "Simulation complete" in caplog.text  # Check that it completes

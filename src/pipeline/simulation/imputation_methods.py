@@ -15,12 +15,34 @@ import warnings
 import logging
 from tqdm import tqdm
 from abc import ABC, abstractmethod
-from numpy.random import default_rng
+from numpy.random import default_rng, SeedSequence
 
 # Import GAN models (assuming artifacts/models/gan_models.py exists)
 from artifacts.models.gan_models import Generator, Discriminator
 
 logger = logging.getLogger(__name__)
+
+def spawn_rngs(parent_rng, n):
+    """
+    Spawn n independent RNGs from a parent RNG.
+    Compatible with both NumPy < 1.26 (using SeedSequence) and >= 1.26 (using spawn).
+    """
+    try:
+        # Try using spawn() method (NumPy >= 1.26)
+        return parent_rng.spawn(n)
+    except AttributeError:
+        # Fallback for older NumPy versions using SeedSequence
+        # Generate n independent seeds from the parent RNG
+        # Use a large range to ensure independence
+        seeds = parent_rng.integers(0, 2**63, size=n, dtype=np.int64)
+        seed_seq = SeedSequence(seeds[0])
+        # Spawn additional sequences if n > 1
+        if n > 1:
+            spawned_seeds = seed_seq.spawn(n - 1)
+            all_seeds = [seed_seq] + spawned_seeds
+        else:
+            all_seeds = [seed_seq]
+        return [default_rng(seed) for seed in all_seeds]
 
 def set_torch_seed(seed):
     torch.manual_seed(seed)
@@ -122,7 +144,7 @@ class MICEImputation(ImputationMethod):
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
-        imputation_rngs = rng.spawn(self.n_imputations)
+        imputation_rngs = spawn_rngs(rng, self.n_imputations)
         
         for i in tqdm(range(self.n_imputations), desc="MICE Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
@@ -157,7 +179,7 @@ class MissForestImputation(ImputationMethod):
         predictors = [col for col in data.columns if col not in col_miss + ['y', 'y_score']]  # Exclude col_miss to avoid duplicates
         if self.use_outcome:
             predictors.append(self.use_outcome)
-        imputation_rngs = rng.spawn(self.n_imputations)
+        imputation_rngs = spawn_rngs(rng, self.n_imputations)
         for i in tqdm(range(self.n_imputations), desc="MissForest Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
             dat_imputed = data.copy()
@@ -202,7 +224,7 @@ class MLPImputation(ImputationMethod):
         if self.use_outcome:
             predictors.append(self.use_outcome)
         scaler = StandardScaler()
-        imputation_rngs = rng.spawn(self.n_imputations)
+        imputation_rngs = spawn_rngs(rng, self.n_imputations)
         for i in tqdm(range(self.n_imputations), desc="MLP Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
             dat_imputed = data.copy()
@@ -272,7 +294,7 @@ class AutoencoderImputation(ImputationMethod):
         criterion = nn.MSELoss()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         scaler = StandardScaler()
-        imputation_rngs = rng.spawn(self.n_imputations)
+        imputation_rngs = spawn_rngs(rng, self.n_imputations)
         for i in tqdm(range(self.n_imputations), desc="Autoencoder Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
             dat_imputed = data.copy()
@@ -345,7 +367,7 @@ class GAINImputation(ImputationMethod):
         optimizer_g = optim.Adam(model.generator.parameters(), lr=0.001)
         optimizer_d = optim.Adam(model.discriminator.parameters(), lr=0.001)
         scaler = StandardScaler()
-        imputation_rngs = rng.spawn(self.n_imputations)
+        imputation_rngs = spawn_rngs(rng, self.n_imputations)
         for i in tqdm(range(self.n_imputations), desc="GAIN Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
             dat_imputed = data.copy()

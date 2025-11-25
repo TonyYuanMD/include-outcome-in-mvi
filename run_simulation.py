@@ -10,7 +10,8 @@ from src.pipeline.simulation.missingness_patterns import (
 )
 from src.pipeline.simulation.imputation_methods import (
     CompleteData, MeanImputation, SingleImputation, MICEImputation,
-    MissForestImputation, MLPImputation, AutoencoderImputation, GAINImputation
+    MissForestImputation, MLPImputation, AutoencoderImputation, GAINImputation,
+    spawn_rngs
 )
 from src.pipeline.simulation.simulator import SimulationStudy
 from numpy.random import default_rng
@@ -67,7 +68,7 @@ def run_single_combination(args):
     ]
     
     all_run_results = []
-    run_rngs = parent_rng.spawn(num_runs)
+    run_rngs = spawn_rngs(parent_rng, num_runs)
     for run_idx in range(num_runs):
         # Spawn FRESH RNG for each run
         run_rng = run_rngs[run_idx]
@@ -166,7 +167,7 @@ def run_simulation(
     
     # Prepare arguments for each combination
     parent_rng = default_rng(seed)
-    args_list = [(param_set, parent_rng.spawn(1)[0]) for param_set in param_combinations]
+    args_list = [(param_set, spawn_rngs(parent_rng, 1)[0]) for param_set in param_combinations]
     
     # Run in parallel
     with Pool(processes=4) as pool:
