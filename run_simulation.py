@@ -1,9 +1,11 @@
 from multiprocessing import Pool
 import os
+import json
 import logging
 from tqdm import tqdm
 import pandas as pd
 from itertools import product
+from pathlib import Path
 from src.pipeline.simulation.data_generators import generate_data
 from src.pipeline.simulation.missingness_patterns import (
     MCARPattern, MARPattern, MARType2YPattern, MARType2ScorePattern, MNARPattern, MARThresholdPattern
@@ -27,6 +29,57 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger()
+
+def load_config(config_path):
+    """
+    Load simulation configuration from a JSON file.
+    
+    Parameters:
+    -----------
+    config_path : str or Path
+        Path to the JSON configuration file
+    
+    Returns:
+    --------
+    dict : Configuration dictionary with simulation parameters
+    
+    Example JSON structure:
+    {
+        "n": [50, 100],
+        "p": [5, 10],
+        "num_runs": 2,
+        "continuous_pct": [0.4],
+        "integer_pct": [0.4],
+        "sparsity": [0.3],
+        "include_interactions": [false],
+        "include_nonlinear": [false],
+        "include_splines": [false],
+        "seed": 123
+    }
+    """
+    config_path = Path(config_path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    # Validate required keys
+    required_keys = ['n', 'p', 'num_runs', 'continuous_pct', 'integer_pct', 'sparsity',
+                     'include_interactions', 'include_nonlinear', 'include_splines', 'seed']
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        raise ValueError(f"Missing required configuration keys: {missing_keys}")
+    
+    # Ensure list types for parameters that should be lists
+    list_params = ['n', 'p', 'continuous_pct', 'integer_pct', 'sparsity',
+                   'include_interactions', 'include_nonlinear', 'include_splines']
+    for param in list_params:
+        if not isinstance(config[param], list):
+            config[param] = [config[param]]
+    
+    logger.info(f"Loaded configuration from {config_path}")
+    return config
 
 def run_single_combination(args):
     param_set, parent_rng = args
@@ -125,6 +178,7 @@ def run_single_combination(args):
     return param_set, results_all
 
 def run_simulation(
+    config_file=None,
     n=[50],
     p=[5],        
     num_runs=1,   
@@ -139,21 +193,62 @@ def run_simulation(
     """
     Run simulation with full factorial design using the refactored framework.
     
+    Parameters can be provided either via a JSON config file or directly as function arguments.
+    If config_file is provided, it takes precedence over direct arguments.
+    
     Parameters:
-    - n: List of number of observations to test
-    - p: List of number of predictors to test
-    - num_runs: Number of simulation runs per parameter combination
-    - continuous_pct: List of proportions of continuous predictors
-    - sparsity: List of sparsity levels
-    - include_interactions: List of boolean flags for interactions
-    - include_nonlinear: List of boolean flags for nonlinear terms
-    - include_splines: List of boolean flags for splines
-    - seed: Random seed
+    -----------
+    config_file : str or Path, optional
+        Path to JSON configuration file. If provided, other parameters are ignored.
+    n : list, default=[50]
+        List of number of observations to test
+    p : list, default=[5]
+        List of number of predictors to test
+    num_runs : int, default=1
+        Number of simulation runs per parameter combination
+    continuous_pct : list, default=[0.4]
+        List of proportions of continuous predictors
+    integer_pct : list, default=[0.4]
+        List of proportions of integer predictors
+    sparsity : list, default=[0.3]
+        List of sparsity levels
+    include_interactions : list, default=[False]
+        List of boolean flags for interactions
+    include_nonlinear : list, default=[False]
+        List of boolean flags for nonlinear terms
+    include_splines : list, default=[False]
+        List of boolean flags for splines
+    seed : int, default=123
+        Random seed
     
     Returns:
-    - results_all: DataFrame with all results
-    - results_averaged: DataFrame with averaged metrics
+    --------
+    results_all : DataFrame
+        DataFrame with all results from all runs
+    results_averaged : DataFrame
+        DataFrame with averaged metrics across runs
+    
+    Example:
+    --------
+    # Using JSON config file
+    results_all, results_avg = run_simulation(config_file='config.json')
+    
+    # Using direct parameters
+    results_all, results_avg = run_simulation(n=[50, 100], p=[5], num_runs=2)
     """
+    # Load configuration from JSON file if provided
+    if config_file is not None:
+        config = load_config(config_file)
+        n = config['n']
+        p = config['p']
+        num_runs = config['num_runs']
+        continuous_pct = config['continuous_pct']
+        integer_pct = config['integer_pct']
+        sparsity = config['sparsity']
+        include_interactions = config['include_interactions']
+        include_nonlinear = config['include_nonlinear']
+        include_splines = config['include_splines']
+        seed = config['seed']
     # Validate integer_pct for all combinations
     for cont_pct, int_pct in product(continuous_pct, integer_pct):
         if cont_pct + int_pct > 1:

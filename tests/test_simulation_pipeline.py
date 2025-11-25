@@ -203,3 +203,140 @@ def test_05_run_simulation_small_n(caplog):
     # assert any("n too small" in record.message for record in caplog.records)
     assert "Full factorial simulation complete" in caplog.text  # Check that it completes
 
+# ----------------------------------------------------------------------
+# TEST 6: JSON Configuration File Support
+# ----------------------------------------------------------------------
+def test_06_json_config_loading():
+    """Test that run_simulation() can load parameters from a JSON config file."""
+    import tempfile
+    import json
+    from run_simulation import load_config, run_simulation
+    
+    # Create a temporary JSON config file
+    config_data = {
+        "n": [20],
+        "p": [5],
+        "num_runs": 1,
+        "continuous_pct": [0.4],
+        "integer_pct": [0.4],
+        "sparsity": [0.3],
+        "include_interactions": [False],
+        "include_nonlinear": [False],
+        "include_splines": [False],
+        "seed": 42
+    }
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(config_data, f)
+        temp_config_path = f.name
+    
+    try:
+        # Test load_config function
+        loaded_config = load_config(temp_config_path)
+        assert loaded_config['n'] == [20]
+        assert loaded_config['p'] == [5]
+        assert loaded_config['num_runs'] == 1
+        assert loaded_config['seed'] == 42
+        
+        # Test that single values are converted to lists
+        config_single = {
+            "n": 20,  # Single value, not a list
+            "p": [5],
+            "num_runs": 1,
+            "continuous_pct": [0.4],
+            "integer_pct": [0.4],
+            "sparsity": [0.3],
+            "include_interactions": [False],
+            "include_nonlinear": [False],
+            "include_splines": [False],
+            "seed": 42
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f2:
+            json.dump(config_single, f2)
+            temp_config_path2 = f2.name
+        
+        try:
+            loaded_config2 = load_config(temp_config_path2)
+            assert isinstance(loaded_config2['n'], list)
+            assert loaded_config2['n'] == [20]
+        finally:
+            os.unlink(temp_config_path2)
+            
+    finally:
+        os.unlink(temp_config_path)
+
+def test_07_json_config_missing_keys():
+    """Test that load_config raises ValueError for missing required keys."""
+    import tempfile
+    import json
+    from run_simulation import load_config
+    import pytest
+    
+    # Create config with missing keys
+    incomplete_config = {
+        "n": [20],
+        "p": [5]
+        # Missing other required keys
+    }
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(incomplete_config, f)
+        temp_config_path = f.name
+    
+    try:
+        with pytest.raises(ValueError) as exc_info:
+            load_config(temp_config_path)
+        assert "Missing required configuration keys" in str(exc_info.value)
+    finally:
+        os.unlink(temp_config_path)
+
+def test_08_run_simulation_with_json_config(caplog):
+    """Test that run_simulation() works correctly when using a JSON config file."""
+    import tempfile
+    import json
+    from run_simulation import run_simulation
+    
+    # Create a temporary JSON config file
+    # Use n=30 to avoid single-class label issues that can occur with very small n
+    config_data = {
+        "n": [30],
+        "p": [5],
+        "num_runs": 1,
+        "continuous_pct": [0.4],
+        "integer_pct": [0.4],
+        "sparsity": [0.3],
+        "include_interactions": [False],
+        "include_nonlinear": [False],
+        "include_splines": [False],
+        "seed": 42
+    }
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(config_data, f)
+        temp_config_path = f.name
+    
+    try:
+        import logging
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        
+        with caplog.at_level(logging.INFO):
+            results_all, results_avg = run_simulation(config_file=temp_config_path)
+        
+        # Verify that the simulation completed
+        assert "Full factorial simulation complete" in caplog.text
+        assert "Loaded configuration from" in caplog.text
+        
+        # Verify results structure
+        assert results_all is not None
+        assert results_avg is not None
+        assert len(results_all) > 0
+        assert len(results_avg) > 0
+        
+        # Verify that parameters from config were used
+        assert results_all['n'].iloc[0] == 30
+        assert results_all['p'].iloc[0] == 5
+        
+    finally:
+        os.unlink(temp_config_path)
+
