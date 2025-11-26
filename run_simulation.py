@@ -85,13 +85,9 @@ def run_single_combination(args):
     param_set, parent_rng = args
     n, p, num_runs, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines = param_set
     
-    # Create parameter suffix for directory and file naming
+    # Create parameter suffix for file naming (used in param_set column)
     param_suffix = (f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_int_{integer_pct}_sparse_{sparsity}_'
                     f'inter_{int(include_interactions)}_nonlin_{int(include_nonlinear)}_splines_{int(include_splines)}')
-    
-    # Define sub-dirs
-    report_dir = f'results/report/{param_suffix}/'
-    os.makedirs(report_dir, exist_ok=True)
     
     # Define missingness patterns and imputation methods (UNCHANGED)
     missingness_patterns = [
