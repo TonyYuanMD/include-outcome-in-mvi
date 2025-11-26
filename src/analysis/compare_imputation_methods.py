@@ -13,14 +13,36 @@ logger = logging.getLogger(__name__)
 
 # --- Helper Functions (Unchanged) ---
 
-def discover_report_dirs(base_dir='results/report/'):
-    """Dynamically find all report directories."""
+def discover_report_dirs(base_dir='results/report/', use_latest_only=False):
+    """
+    Dynamically find all report directories.
+    
+    Parameters:
+    -----------
+    base_dir : str
+        Base directory to search for report directories
+    use_latest_only : bool, default=False
+        If True, return only the most recently modified directory.
+        If False, return all directories matching the pattern.
+    
+    Returns:
+    --------
+    list : List of report directory paths
+    """
     report_dirs = list(Path(base_dir).glob('n_*'))
     if not report_dirs:
         logger.error(f"No report directories found in {base_dir}")
         return []
-    logger.info(f"Found {len(report_dirs)} report directories: {[d.name for d in report_dirs]}")
-    return [str(d) for d in report_dirs]
+    
+    if use_latest_only:
+        # Sort by modification time, get the most recent
+        report_dirs = sorted(report_dirs, key=lambda p: p.stat().st_mtime, reverse=True)
+        latest_dir = report_dirs[0]
+        logger.info(f"Using only the most recent directory: {latest_dir.name}")
+        return [str(latest_dir)]
+    else:
+        logger.info(f"Found {len(report_dirs)} report directories: {[d.name for d in report_dirs]}")
+        return [str(d) for d in report_dirs]
 
 def load_results(report_dir):
     """Load results_all_runs.csv and results_averaged.csv from a report directory."""
@@ -244,9 +266,16 @@ def compare_methods(report_dirs):
     logger.info(f"Analysis complete. Tables in {tables_dir}, figures in {figures_dir}")
 
 if __name__ == "__main__":
+    import sys
+    
     # Automatically discover all report directories
     BASE_DIR = 'results/report/'
-    report_dirs = discover_report_dirs(BASE_DIR)
+    
+    # Check if user wants to analyze only the latest run
+    # Usage: python compare_imputation_methods.py --latest
+    use_latest_only = '--latest' in sys.argv or '-l' in sys.argv
+    
+    report_dirs = discover_report_dirs(BASE_DIR, use_latest_only=use_latest_only)
     
     if report_dirs:
         logger.info(f"Found {len(report_dirs)} report directory(ies) to analyze")
