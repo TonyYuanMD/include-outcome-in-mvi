@@ -1,0 +1,31 @@
+Profile stats for n=20, p=5
+================================================================================
+
+         72053 function calls (70596 primitive calls) in 62.773 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1245 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.002    0.002   62.772   62.772 H:\MAS_Y1\Duke-NUS Summer Research\include_y_python\run_simulation.py:176(run_simulation)
+        5    0.000    0.000   62.273   12.455 H:\Anaconda\envs\ML_1\lib\threading.py:288(wait)
+       24   62.273    2.595   62.273    2.595 {method 'acquire' of '_thread.lock' objects}
+        2    0.000    0.000   62.224   31.112 H:\Anaconda\envs\ML_1\lib\site-packages\tqdm\std.py:1160(__iter__)
+        2    0.000    0.000   62.223   31.111 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:853(next)
+        5    0.000    0.000    0.133    0.027 H:\Anaconda\envs\ML_1\lib\multiprocessing\util.py:205(__call__)
+        1    0.000    0.000    0.132    0.132 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:738(__exit__)
+        1    0.000    0.000    0.132    0.132 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:654(terminate)
+        1    0.000    0.000    0.132    0.132 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:680(_terminate_pool)
+       18    0.000    0.000    0.130    0.007 H:\Anaconda\envs\ML_1\lib\multiprocessing\popen_spawn_win32.py:101(wait)
+        4    0.000    0.000    0.130    0.032 H:\Anaconda\envs\ML_1\lib\multiprocessing\process.py:142(join)
+       18    0.129    0.007    0.129    0.007 {built-in method _winapi.WaitForSingleObject}
+        1    0.000    0.000    0.097    0.097 H:\Anaconda\envs\ML_1\lib\multiprocessing\context.py:115(Pool)
+        1    0.000    0.000    0.097    0.097 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:183(__init__)
+        2    0.000    0.000    0.081    0.040 H:\Anaconda\envs\ML_1\lib\site-packages\pandas\core\series.py:4800(apply)
+        2    0.000    0.000    0.081    0.040 H:\Anaconda\envs\ML_1\lib\site-packages\pandas\core\apply.py:1404(apply)
+        2    0.000    0.000    0.081    0.040 H:\Anaconda\envs\ML_1\lib\site-packages\pandas\core\apply.py:1477(apply_standard)
+        3    0.001    0.000    0.058    0.019 H:\Anaconda\envs\ML_1\lib\site-packages\pandas\core\frame.py:6246(reset_index)
+        1    0.000    0.000    0.057    0.057 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:305(_repopulate_pool)
+        1    0.000    0.000    0.057    0.057 H:\Anaconda\envs\ML_1\lib\multiprocessing\pool.py:314(_repopulate_pool_static)
+
+

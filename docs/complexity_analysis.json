@@ -1,0 +1,32 @@
+{
+  "n_complexity_p5": {
+    "slope": -0.09517742531447859,
+    "intercept": 4.405531422316101,
+    "complexity": "O(n^-0.10)",
+    "r_squared": 0.7987443706912755
+  },
+  "n_complexity_p10": {
+    "slope": -0.24495865837022968,
+    "intercept": 5.627716096070227,
+    "complexity": "O(n^-0.24)",
+    "r_squared": 0.998478968981676
+  },
+  "p_complexity_n20": {
+    "slope": 1.0938328322694242,
+    "intercept": 2.3790684715006423,
+    "complexity": "O(p^1.09)",
+    "r_squared": 1.0
+  },
+  "p_complexity_n50": {
+    "slope": 0.9691252305479297,
+    "intercept": 2.429054932830386,
+    "complexity": "O(p^0.97)",
+    "r_squared": 1.0
+  },
+  "p_complexity_n100": {
+    "slope": 0.7389488099355122,
+    "intercept": 2.803205110905779,
+    "complexity": "O(p^0.74)",
+    "r_squared": 1.0
+  }
+}
