@@ -34,15 +34,28 @@ def discover_report_dirs(base_dir='results/report/', use_latest_only=False):
         logger.error(f"No report directories found in {base_dir}")
         return []
     
+    # Filter out empty directories (directories without results_averaged.csv)
+    valid_dirs = []
+    for d in report_dirs:
+        results_file = d / 'results_averaged.csv'
+        if results_file.exists():
+            valid_dirs.append(d)
+        else:
+            logger.debug(f"Skipping empty directory: {d.name}")
+    
+    if not valid_dirs:
+        logger.error(f"No valid report directories found in {base_dir} (all are empty or missing results_averaged.csv)")
+        return []
+    
     if use_latest_only:
-        # Sort by modification time, get the most recent
-        report_dirs = sorted(report_dirs, key=lambda p: p.stat().st_mtime, reverse=True)
-        latest_dir = report_dirs[0]
+        # Sort by modification time of results_averaged.csv, get the most recent
+        valid_dirs = sorted(valid_dirs, key=lambda p: (p / 'results_averaged.csv').stat().st_mtime, reverse=True)
+        latest_dir = valid_dirs[0]
         logger.info(f"Using only the most recent directory: {latest_dir.name}")
         return [str(latest_dir)]
     else:
-        logger.info(f"Found {len(report_dirs)} report directories: {[d.name for d in report_dirs]}")
-        return [str(d) for d in report_dirs]
+        logger.info(f"Found {len(valid_dirs)} report directories: {[d.name for d in valid_dirs]}")
+        return [str(d) for d in valid_dirs]
 
 def load_results(report_dir):
     """Load results_all_runs.csv and results_averaged.csv from a report directory."""
