@@ -327,10 +327,10 @@ def run_simulation(
     results_mean = results_all.groupby(groupby_keys, sort=False)[metric_cols].agg(agg_dict).reset_index()
     
     # Calculate std of MEAN metrics across runs (simulation uncertainty of performance)
-    results_std_runs = results_all.groupby(groupby_keys, sort=False)[mean_cols].std().reset_index()
-
+    results_std_runs = results_all.groupby(groupby_keys, sort=False)[mean_cols].std(numeric_only=True).reset_index()
+    
     # Calculate std of STD metrics across runs (variability of imputation uncertainty)
-    results_std_std_runs = results_all.groupby(groupby_keys, sort=False)[std_cols].std().reset_index()
+    results_std_std_runs = results_all.groupby(groupby_keys, sort=False)[std_cols].std(numeric_only=True).reset_index()
 
     # 3. Rename STD columns for clarity
     # Rename: y_log_loss_mean -> y_log_loss_mean_std_runs (simulation uncertainty of performance)
