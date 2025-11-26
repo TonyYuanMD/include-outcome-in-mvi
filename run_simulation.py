@@ -317,17 +317,30 @@ def run_simulation(
         'sparsity', 'interactions', 'nonlinear', 'splines'
     ])[metric_cols].mean().reset_index()
     
+    # Calculate std of MEAN metrics across runs (simulation uncertainty of performance)
     results_std_runs = results_all.groupby([
         'missingness', 'method', 'imputation_outcome_used', 
         'n', 'p', 'cont_pct', 'int_pct',
         'sparsity', 'interactions', 'nonlinear', 'splines'
     ])[[m for m in metric_cols if m.endswith('_mean')]].std().reset_index()
 
-    # 3. Rename STD columns for clarity (e.g., y_log_loss_mean -> y_log_loss_mean_std_runs)
+    # Calculate std of STD metrics across runs (variability of imputation uncertainty)
+    results_std_std_runs = results_all.groupby([
+        'missingness', 'method', 'imputation_outcome_used', 
+        'n', 'p', 'cont_pct', 'int_pct',
+        'sparsity', 'interactions', 'nonlinear', 'splines'
+    ])[[m for m in metric_cols if m.endswith('_std')]].std().reset_index()
+
+    # 3. Rename STD columns for clarity
+    # Rename: y_log_loss_mean -> y_log_loss_mean_std_runs (simulation uncertainty of performance)
     std_col_map = {col: f'{col}_std_runs' for col in results_std_runs.columns if col.endswith('_mean')}
     results_std_runs = results_std_runs.rename(columns=std_col_map)
     
-    # 4. Merge mean and std results
+    # Rename: y_log_loss_std -> y_log_loss_std_std_runs (variability of imputation uncertainty)
+    std_std_col_map = {col: f'{col}_std_runs' for col in results_std_std_runs.columns if col.endswith('_std')}
+    results_std_std_runs = results_std_std_runs.rename(columns=std_std_col_map)
+    
+    # 4. Merge mean, std of means, and std of stds
     # Use the original mean columns as the merge key
     merge_keys = [
         'missingness', 'method', 'imputation_outcome_used', 
@@ -335,7 +348,9 @@ def run_simulation(
         'sparsity', 'interactions', 'nonlinear', 'splines'
     ]
     
+    # Merge all three: means, std of means, and std of stds
     results_averaged = pd.merge(results_mean, results_std_runs, on=merge_keys, how='left')
+    results_averaged = pd.merge(results_averaged, results_std_std_runs, on=merge_keys, how='left')
     
     # Save the averaged results
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)
