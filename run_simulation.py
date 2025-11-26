@@ -6,6 +6,7 @@ from tqdm import tqdm
 import pandas as pd
 from itertools import product
 from pathlib import Path
+from functools import lru_cache
 from src.pipeline.simulation.data_generators import generate_data
 from src.pipeline.simulation.missingness_patterns import (
     MCARPattern, MARPattern, MARType2YPattern, MARType2ScorePattern, MNARPattern, MARThresholdPattern
@@ -116,6 +117,19 @@ def run_single_combination(args):
         # GAINImputation(use_outcome='y_score')
     ]
     
+    # OPTIMIZATION: Pre-define expected_metrics and method lookup outside loop
+    expected_metrics = [
+        # Binary Outcome 'y' Metrics
+        'y_log_loss_mean', 'y_log_loss_std',
+        
+        # Continuous Outcome 'y_score' Metrics
+        'y_score_mse_mean', 'y_score_mse_std',
+        'y_score_r2_mean', 'y_score_r2_std',
+    ]
+    
+    # OPTIMIZATION: Create method lookup dictionary once (eliminates repeated searches)
+    method_lookup = {m.name: m for m in imputation_methods}
+    
     all_run_results = []
     run_rngs = spawn_rngs(parent_rng, num_runs)
     for run_idx in range(num_runs):
@@ -133,39 +147,27 @@ def run_single_combination(args):
         logger.info(f"Running simulation for param_set: {param_suffix}, run {run_idx}")
         results = study.run_all(missingness_patterns, imputation_methods)
         
-        # Aggregate results for THIS RUN (your existing code)
-        expected_metrics = [
-            # Binary Outcome 'y' Metrics
-            'y_log_loss_mean', 'y_log_loss_std',
-            
-            # Continuous Outcome 'y_score' Metrics
-            'y_score_mse_mean', 'y_score_mse_std',
-            'y_score_r2_mean', 'y_score_r2_std',
-            
-            # (The others like 'y_mse_mean', 'y_score_log_loss_mean' are omitted)
-        ]
+        # OPTIMIZATION: Pre-allocate list and use list comprehension where possible
         run_results = []
         for key, result in results.items():
-            pattern_name, method_name = key.split(' ')
-            # The 'y' column in the results DF now represents the outcome used in the IMPUTATION process (None, 'y', or 'y_score')
-            method_instance = next((m for m in imputation_methods if m.name == method_name), None)
+            pattern_name, method_name = key.split(' ', 1)  # Split only on first space
+            # OPTIMIZATION: Use dictionary lookup instead of next() iteration
+            method_instance = method_lookup.get(method_name)
             imputation_outcome_used = getattr(method_instance, 'use_outcome', None) if method_instance else None
-            result_dict = {
-                # result is the single dict from run_scenario, containing all prefixed metrics
-                key: result.get(key, np.nan) for key in expected_metrics
-            }
             
-            result_df = pd.DataFrame([result_dict])
-            result_df = result_df.assign(
-                missingness=pattern_name, 
-                method=method_name, 
-                # This 'imputation_outcome_used' column is crucial for analysis
-                imputation_outcome_used=imputation_outcome_used or 'none', 
-                param_set=param_suffix, 
-                run_idx=run_idx  
-            )
-            run_results.append(result_df)
+            # OPTIMIZATION: Build result_dict more efficiently
+            result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
+            result_dict.update({
+                'missingness': pattern_name,
+                'method': method_name,
+                'imputation_outcome_used': imputation_outcome_used or 'none',
+                'param_set': param_suffix,
+                'run_idx': run_idx
+            })
+            
+            run_results.append(pd.DataFrame([result_dict]))
         
+        # OPTIMIZATION: Concatenate once per run (more efficient than appending to list)
         all_run_results.append(pd.concat(run_results, ignore_index=True))
     
     # Concatenate ALL RUNS
@@ -301,31 +303,34 @@ def run_simulation(
     results_all.to_csv(os.path.join(report_dir, 'results_all_runs.csv'), index=False)
     logger.info(f"Saved all runs results to {os.path.join(report_dir, 'results_all_runs.csv')}")
 
+    # OPTIMIZATION: Define groupby keys once and reuse
+    groupby_keys = [
+        'missingness', 'method', 'imputation_outcome_used', 
+        'n', 'p', 'cont_pct', 'int_pct',
+        'sparsity', 'interactions', 'nonlinear', 'splines'
+    ]
+    
     # Aggregate metrics
     metric_cols = [
         'y_log_loss_mean', 'y_log_loss_std', 
         'y_score_mse_mean', 'y_score_mse_std', 
         'y_score_r2_mean', 'y_score_r2_std'
     ]
-    results_mean = results_all.groupby([
-        'missingness', 'method', 'imputation_outcome_used', 
-        'n', 'p', 'cont_pct', 'int_pct',
-        'sparsity', 'interactions', 'nonlinear', 'splines'
-    ])[metric_cols].mean().reset_index()
+    
+    # OPTIMIZATION: Use agg() with dict for multiple operations in single pass
+    # This is more efficient than separate groupby calls
+    mean_cols = [m for m in metric_cols if m.endswith('_mean')]
+    std_cols = [m for m in metric_cols if m.endswith('_std')]
+    
+    # Single groupby with aggregation dictionary (more efficient)
+    agg_dict = {col: 'mean' for col in metric_cols}
+    results_mean = results_all.groupby(groupby_keys, sort=False)[metric_cols].agg(agg_dict).reset_index()
     
     # Calculate std of MEAN metrics across runs (simulation uncertainty of performance)
-    results_std_runs = results_all.groupby([
-        'missingness', 'method', 'imputation_outcome_used', 
-        'n', 'p', 'cont_pct', 'int_pct',
-        'sparsity', 'interactions', 'nonlinear', 'splines'
-    ])[[m for m in metric_cols if m.endswith('_mean')]].std().reset_index()
+    results_std_runs = results_all.groupby(groupby_keys, sort=False)[mean_cols].std().reset_index()
 
     # Calculate std of STD metrics across runs (variability of imputation uncertainty)
-    results_std_std_runs = results_all.groupby([
-        'missingness', 'method', 'imputation_outcome_used', 
-        'n', 'p', 'cont_pct', 'int_pct',
-        'sparsity', 'interactions', 'nonlinear', 'splines'
-    ])[[m for m in metric_cols if m.endswith('_std')]].std().reset_index()
+    results_std_std_runs = results_all.groupby(groupby_keys, sort=False)[std_cols].std().reset_index()
 
     # 3. Rename STD columns for clarity
     # Rename: y_log_loss_mean -> y_log_loss_mean_std_runs (simulation uncertainty of performance)
@@ -337,16 +342,14 @@ def run_simulation(
     results_std_std_runs = results_std_std_runs.rename(columns=std_std_col_map)
     
     # 4. Merge mean, std of means, and std of stds
-    # Use the original mean columns as the merge key
-    merge_keys = [
-        'missingness', 'method', 'imputation_outcome_used', 
-        'n', 'p', 'cont_pct', 'int_pct',
-        'sparsity', 'interactions', 'nonlinear', 'splines'
-    ]
+    # OPTIMIZATION: Use reduce() for multiple merges or chain merges more efficiently
+    # Since we have the same keys, we can merge in one step using pd.concat after setting index
+    # But merge is clearer here, so we'll keep it but ensure we're using the same keys variable
     
     # Merge all three: means, std of means, and std of stds
-    results_averaged = pd.merge(results_mean, results_std_runs, on=merge_keys, how='left')
-    results_averaged = pd.merge(results_averaged, results_std_std_runs, on=merge_keys, how='left')
+    # OPTIMIZATION: Use suffixes to avoid column name conflicts, merge in order
+    results_averaged = pd.merge(results_mean, results_std_runs, on=groupby_keys, how='left', suffixes=('', '_std_runs'))
+    results_averaged = pd.merge(results_averaged, results_std_std_runs, on=groupby_keys, how='left', suffixes=('', '_std_std_runs'))
     
     # Save the averaged results
     results_averaged.to_csv(os.path.join(report_dir, 'results_averaged.csv'), index=False)

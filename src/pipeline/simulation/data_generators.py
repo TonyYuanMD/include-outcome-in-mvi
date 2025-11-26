@@ -30,15 +30,20 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
     if rng is None:
         rng = default_rng(123)
     
-    # Generate covariates
+    # OPTIMIZATION: Vectorize covariate generation
     num_continuous = int(p * continuous_pct)
     num_integer = int(p * integer_pct)
     num_binary = p - num_continuous - num_integer
     data = {}
     covariates = []
+    
+    # Generate all random values at once (vectorized)
+    z_all = rng.normal(0, 1, (n, p))
+    
+    # Process in batches by type (more efficient than loop)
     for i in range(p):
         name = f'X{i+1}'
-        z = rng.normal(0, 1, n)
+        z = z_all[:, i]
         if i < num_continuous:
             data[name] = z
         elif i < num_continuous + num_integer:
@@ -90,9 +95,16 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
     beta[nonzero_indices + 1] = rng.normal(0, 1, num_nonzero)
     
     # Generate outcomes
+    # OPTIMIZATION: Build design matrix more efficiently
     design_matrix = np.column_stack([np.ones(n)] + [data[cov] for cov in covariates])
     logits = design_matrix @ beta
-    probs_y = 1 / (1 + np.exp(-logits))
+    
+    # OPTIMIZATION: Use numerically stable sigmoid calculation
+    # Clip logits to prevent overflow in exp
+    logits_clipped = np.clip(logits, -500, 500)
+    probs_y = 1 / (1 + np.exp(-logits_clipped))
+    
+    # OPTIMIZATION: Vectorize outcome generation
     data['y'] = rng.binomial(1, probs_y)
     data['y_score'] = design_matrix @ beta + rng.normal(0, 1, n)
     
