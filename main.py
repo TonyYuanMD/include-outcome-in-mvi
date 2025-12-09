@@ -97,13 +97,13 @@ def demo_multiple_methods():
     # Create simulation study
     study = SimulationStudy(
         n=100,
-        p=5,
-        num_runs=1,
+        p=10,
+        num_runs=100,
         continuous_pct=0.4,
         integer_pct=0.4,
         sparsity=0.3,
-        include_interactions=False,
-        include_nonlinear=False,
+        include_interactions=True,
+        include_nonlinear=True,
         include_splines=False,
         seed=42
     )
@@ -112,8 +112,8 @@ def demo_multiple_methods():
     pattern = MCARPattern()
     methods = [
         MeanImputation(),
-        MICEImputation(use_outcome=None, n_imputations=3),
-        MissForestImputation(use_outcome=None, n_imputations=3)
+        MICEImputation(use_outcome='y', n_imputations=5),
+        MissForestImputation(use_outcome='y', n_imputations=5)
     ]
     
     print(f"Missingness Pattern: {pattern.name}")
@@ -153,13 +153,13 @@ def demo_multiple_patterns():
     # Create simulation study
     study = SimulationStudy(
         n=100,
-        p=5,
-        num_runs=1,
+        p=10,
+        num_runs=1000,
         continuous_pct=0.4,
         integer_pct=0.4,
         sparsity=0.3,
-        include_interactions=False,
-        include_nonlinear=False,
+        include_interactions=True,
+        include_nonlinear=True,
         include_splines=False,
         seed=42
     )

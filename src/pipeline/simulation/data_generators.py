@@ -77,8 +77,13 @@ def generate_data(n=1000, p=5, continuous_pct=0.4, integer_pct=0.4, sparsity=0.3
         for i in range(num_continuous):
             name = covariates[i]
             x = data[name]
-            knots = np.percentile(x, [25, 50, 75])
             degree = 3
+            # BSpline requires: len(knots) = len(coeffs) + degree + 1
+            # With degree=3, we have (degree+1)=4 coeffs, so we need 4+3+1=8 knots
+            num_coeffs = degree + 1
+            num_knots = num_coeffs + degree + 1
+            # Use quantiles to create evenly spaced knots across the data range
+            knots = np.quantile(x, np.linspace(0, 1, num_knots))
             for j in range(degree + 1):
                 coeffs = np.zeros(degree + 1)
                 coeffs[j] = 1

@@ -103,18 +103,18 @@ def run_single_combination(args):
         MICEImputation(use_outcome=None),
         MICEImputation(use_outcome='y'),
         MICEImputation(use_outcome='y_score'),
-        # MissForestImputation(use_outcome=None),
-        # MissForestImputation(use_outcome='y'),
-        # MissForestImputation(use_outcome='y_score'),
-        # MLPImputation(use_outcome=None),
-        # MLPImputation(use_outcome='y'),
-        # MLPImputation(use_outcome='y_score'),
-        # AutoencoderImputation(use_outcome=None),
-        # AutoencoderImputation(use_outcome='y'),
-        # AutoencoderImputation(use_outcome='y_score'),
-        # GAINImputation(use_outcome=None),
-        # GAINImputation(use_outcome='y'),
-        # GAINImputation(use_outcome='y_score')
+        MissForestImputation(use_outcome=None),
+        MissForestImputation(use_outcome='y'),
+        MissForestImputation(use_outcome='y_score'),
+        MLPImputation(use_outcome=None),
+        MLPImputation(use_outcome='y'),
+        MLPImputation(use_outcome='y_score'),
+        AutoencoderImputation(use_outcome=None),
+        AutoencoderImputation(use_outcome='y'),
+        AutoencoderImputation(use_outcome='y_score'),
+        GAINImputation(use_outcome=None),
+        GAINImputation(use_outcome='y'),
+        GAINImputation(use_outcome='y_score')
     ]
     
     # OPTIMIZATION: Pre-define expected_metrics and method lookup outside loop
