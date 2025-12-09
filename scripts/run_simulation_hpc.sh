@@ -3,8 +3,9 @@
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
 #SBATCH --time=24:00:00          # Maximum runtime (adjust based on your config)
-#SBATCH --cpus-per-task=32      # Number of CPU cores (adjust based on HPC resources)
-#SBATCH --mem=32G                # Memory per node (adjust based on your needs)
+#SBATCH --cpus-per-task=64      # Number of CPU cores (prioritize CPU over GPU)
+#SBATCH --mem=64G                # Memory per node (adjust based on your needs)
+#SBATCH --gres=gpu:0             # No GPU needed (simulation is CPU-bound)
 #SBATCH --partition=normal       # Partition name (check your HPC's available partitions)
 #SBATCH --mail-type=END,FAIL     # Email notifications (optional)
 #SBATCH --mail-user=your.email@example.com  # Your email (optional)
