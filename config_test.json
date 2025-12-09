@@ -1,0 +1,13 @@
+{
+    "n": [20],
+    "p": [5],
+    "num_runs": 2,
+    "continuous_pct": [0.4],
+    "integer_pct": [0.4],
+    "sparsity": [0.3],
+    "include_interactions": [true],
+    "include_nonlinear": [true],
+    "include_splines": [true],
+    "seed": 42
+}
+
