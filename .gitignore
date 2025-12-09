@@ -5,8 +5,7 @@ __pycache__/
 data/raw/
 artifacts/missing/
 artifacts/imputed/
-results/figures/
-results/tables/
+results/
 *.log.txt
 
 # VS Code settings
