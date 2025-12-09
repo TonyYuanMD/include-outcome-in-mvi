@@ -263,7 +263,11 @@ def run_simulation(
     args_list = [(param_set, spawn_rngs(parent_rng, 1)[0]) for param_set in param_combinations]
     
     # Run in parallel
-    with Pool(processes=4) as pool:
+    # Use SLURM_CPUS_PER_TASK if on HPC, otherwise use cpu_count() or default to 4
+    import os
+    num_cores = int(os.environ.get('SLURM_CPUS_PER_TASK', os.environ.get('NUM_PROCESSES', min(os.cpu_count() or 4, 4))))
+    logger.info(f"Using {num_cores} parallel processes")
+    with Pool(processes=num_cores) as pool:
         run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
 
     # Collect and save results
