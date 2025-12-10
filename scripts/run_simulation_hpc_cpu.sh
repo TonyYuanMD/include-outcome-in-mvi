@@ -1,42 +1,28 @@
 #!/bin/bash
-#SBATCH --job-name=simulation_mvi
+#SBATCH --job-name=simulation_cpu
 #SBATCH --output=log/slurm-%j.out
 #SBATCH --error=log/slurm-%j.err
 #SBATCH --time=01:00:00          # Maximum runtime (adjust based on your config)
-#SBATCH --cpus-per-task=32       # Number of CPU cores (parallelizes across parameter combinations)
+#SBATCH --cpus-per-task=32       # Number of CPU cores (parallelizes across runs)
 #SBATCH --mem=32G                 # Memory per node (adjust based on CPU count)
 #SBATCH --nodes=1                 # Number of nodes
 #SBATCH --ntasks=1                # Single task (multiprocessing handles parallelism)
 #SBATCH --account=ling702w25_class
-# #SBATCH --gres=gpu:0              # GPU for GAIN/AE (beneficial for larger datasets n>500, p>10)
-#SBATCH --partition=standard           # Partition name (check your HPC's available partitions)
-# Note: For small datasets (n<100, p<15), consider CPU-only mode (remove --gres=gpu:1)
-#       GPU overhead may outweigh benefits, and reduces GPU contention issues
-# Note: Parallelization is ACROSS parameter combinations, not runs.
-#       Runs are sequential within each combination. For 500 runs, each combination
-#       will take time, but multiple combinations run in parallel.
-#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --partition=standard      # CPU-only partition (no GPU needed)
+# Note: This script runs CPU-only methods (CompleteData, Mean, Single, MICE, MissForest, MLP)
+#       For GPU methods (Autoencoder, GAIN), use run_simulation_hpc_gpu.sh
 
 # Print job information
 echo "Job ID: $SLURM_JOB_ID"
 echo "Job Name: $SLURM_JOB_NAME"
 echo "Node: $SLURM_NODELIST"
-echo "CPUs: $SLURM_CPUS_PER_TASK"
-echo "Memory: $SLURM_MEM_PER_NODE"
 echo "Start Time: $(date)"
 echo "Working Directory: $(pwd)"
 echo ""
 
-# Load required modules (adjust based on your HPC system)
-# Example for systems with module system:
-# module load python/3.10
-# module load anaconda3
-
-# Or activate conda environment if using conda
-source ~/.bashrc
-conda activate CSE595
-
-cd /home/yhongda/include_y_mvi/include-outcome-in-mvi
+# Load modules if needed (adjust for your HPC)
+# module load python/3.9
+# module load cuda/11.8  # Not needed for CPU-only
 
 # Set Python path (if needed)
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
@@ -46,21 +32,20 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 NUM_PROCESSES=${SLURM_CPUS_PER_TASK:-32}
 export NUM_PROCESSES
 
-# Optionally limit parallel runs to reduce GPU contention
-# Uncomment and adjust if you see GPU errors:
-# export MAX_PARALLEL_RUNS=4
+# Set method filter to CPU-only
+export METHOD_FILTER=cpu
 
 # Configuration file (change this to your desired config)
 CONFIG_FILE="${1:-config_full_factorial.json}"
 
-echo "Running simulation with config: $CONFIG_FILE"
+echo "Running CPU-only simulation with config: $CONFIG_FILE"
 echo "Using $NUM_PROCESSES parallel processes (parallelizing across runs)"
-echo "GPU available: $(python -c 'import torch; print(torch.cuda.is_available())')"
+echo "Method filter: CPU-only (CompleteData, Mean, Single, MICE, MissForest, MLP)"
 echo ""
 echo "Parallelization strategy:"
 echo "  - Single parameter combination detected"
 echo "  - Runs are parallelized across $NUM_PROCESSES CPUs"
-echo "  - For 100 runs with $NUM_PROCESSES CPUs: ~$(( (100 + NUM_PROCESSES - 1) / NUM_PROCESSES )) batches"
+echo "  - CPU-only methods: no GPU contention, can use all CPUs"
 echo ""
 
 # Start CPU monitoring in background (logs to file)
@@ -89,23 +74,23 @@ echo "Starting CPU monitoring (logging to $MONITOR_LOG)"
             CPU_USAGE="N/A"
         fi
         
-        # Count active Python processes
-        ACTIVE_PROCS=$(ps aux | grep -E "[p]ython.*run_simulation|[p]ython -c.*run_simulation" | wc -l)
+        # Get total allocated CPUs
+        TOTAL_CORES=$SLURM_CPUS_PER_TASK
         
-        # Get number of CPU cores
-        TOTAL_CORES=${SLURM_CPUS_PER_TASK:-$(nproc)}
+        # Get number of active Python processes
+        ACTIVE_PROCS=$(ps -ef | grep python | grep -v grep | wc -l)
         
-        # Calculate idle/active cores based on CPU usage
-        if [ "$CPU_USAGE" != "N/A" ] && [ ! -z "$CPU_USAGE" ]; then
-            IDLE_CORES=$(echo "$TOTAL_CORES $CPU_USAGE" | awk '{printf "%.1f", $1 * (1 - $2/100)}')
+        # Estimate active and idle cores based on CPU usage
+        if [ "$CPU_USAGE" != "N/A" ]; then
             ACTIVE_CORES=$(echo "$TOTAL_CORES $CPU_USAGE" | awk '{printf "%.1f", $1 * ($2/100)}')
+            IDLE_CORES=$(echo "$TOTAL_CORES $CPU_USAGE" | awk '{printf "%.1f", $1 * (1 - $2/100)}')
         else
             IDLE_CORES="N/A"
             ACTIVE_CORES="N/A"
         fi
         
         echo "$TIMESTAMP,$CPU_USAGE,$IDLE_CORES,$ACTIVE_CORES,$TOTAL_CORES,$ACTIVE_PROCS"
-        sleep 60  # Update every 10 seconds
+        sleep 60  # Update every 60 seconds
     done
 ) > "$MONITOR_LOG" 2>&1 &
 MONITOR_PID=$!
@@ -114,10 +99,6 @@ echo "To view in real-time: tail -f $MONITOR_LOG"
 echo ""
 
 # Run simulation
-# METHOD_FILTER can be set via environment variable: 'all', 'cpu', or 'gpu'
-METHOD_FILTER="${METHOD_FILTER:-all}"
-export METHOD_FILTER
-
 python -c "
 from run_simulation import run_simulation
 import os
@@ -127,7 +108,7 @@ import sys
 # No need to set it manually here
 
 # Get method filter from environment
-method_filter = os.environ.get('METHOD_FILTER', 'all')
+method_filter = os.environ.get('METHOD_FILTER', 'cpu')
 print(f'Running simulation with method_filter: {method_filter}')
 
 # Run simulation
@@ -164,7 +145,4 @@ fi
 echo ""
 echo "End Time: $(date)"
 echo "Job completed"
-
-# Optional: Compress results to save space
-# tar -czf results_${SLURM_JOB_ID}.tar.gz results/
 

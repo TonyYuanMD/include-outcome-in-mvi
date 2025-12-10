@@ -1,6 +1,6 @@
 {
-    "n": [1000],
-    "p": [20],
+    "n": [20],
+    "p": [10],
     "num_runs": 50,
     "continuous_pct": [0.4],
     "integer_pct": [0.4],

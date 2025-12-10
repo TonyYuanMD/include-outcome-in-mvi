@@ -2,6 +2,8 @@ from multiprocessing import Pool
 import os
 import json
 import logging
+import sys
+import argparse
 from tqdm import tqdm
 import pandas as pd
 from itertools import product
@@ -82,18 +84,19 @@ def load_config(config_path):
     logger.info(f"Loaded configuration from {config_path}")
     return config
 
-def run_single_run(args):
-    """Run a single simulation run. Used for parallelization across runs."""
-    (n, p, continuous_pct, integer_pct, sparsity, include_interactions, 
-     include_nonlinear, include_splines, param_suffix, run_idx, run_rng) = args
+def get_imputation_methods(method_filter='all'):
+    """
+    Get list of imputation methods based on filter.
     
-    # Create missingness patterns and imputation methods inside worker
-    # (needed for proper pickling in multiprocessing)
-    missingness_patterns = [
-        MCARPattern(), MARPattern(), MARType2YPattern(), 
-        MARType2ScorePattern(), MNARPattern(), MARThresholdPattern()
-    ]
-    imputation_methods = [
+    Parameters:
+    -----------
+    method_filter : str, default='all'
+        Filter to apply: 'all', 'cpu', or 'gpu'
+        - 'all': all methods
+        - 'cpu': CPU-only methods (CompleteData, Mean, Single, MICE, MissForest, MLP)
+        - 'gpu': GPU methods (Autoencoder, GAIN)
+    """
+    all_methods = [
         CompleteData(), MeanImputation(), 
         SingleImputation(use_outcome=None),
         SingleImputation(use_outcome='y'),
@@ -114,6 +117,30 @@ def run_single_run(args):
         GAINImputation(use_outcome='y'),
         GAINImputation(use_outcome='y_score')
     ]
+    
+    if method_filter == 'all':
+        return all_methods
+    elif method_filter == 'cpu':
+        # CPU-only methods: exclude Autoencoder and GAIN
+        return [m for m in all_methods if not isinstance(m, (AutoencoderImputation, GAINImputation))]
+    elif method_filter == 'gpu':
+        # GPU methods: only Autoencoder and GAIN
+        return [m for m in all_methods if isinstance(m, (AutoencoderImputation, GAINImputation))]
+    else:
+        raise ValueError(f"Unknown method_filter: {method_filter}. Must be 'all', 'cpu', or 'gpu'")
+
+def run_single_run(args):
+    """Run a single simulation run. Used for parallelization across runs."""
+    (n, p, continuous_pct, integer_pct, sparsity, include_interactions, 
+     include_nonlinear, include_splines, param_suffix, run_idx, run_rng, method_filter) = args
+    
+    # Create missingness patterns and imputation methods inside worker
+    # (needed for proper pickling in multiprocessing)
+    missingness_patterns = [
+        MCARPattern(), MARPattern(), MARType2YPattern(), 
+        MARType2ScorePattern(), MNARPattern(), MARThresholdPattern()
+    ]
+    imputation_methods = get_imputation_methods(method_filter)
     
     # Create method lookup
     method_lookup = {m.name: m for m in imputation_methods}
@@ -161,52 +188,14 @@ def run_single_run(args):
     return pd.concat(run_results, ignore_index=True)
 
 def run_single_combination(args):
-    param_set, parent_rng = args
+    param_set, parent_rng, method_filter = args
     n, p, num_runs, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines = param_set
     
     # Create parameter suffix for file naming (used in param_set column)
     param_suffix = (f'n_{n}_p_{p}_runs_{num_runs}_cont_{continuous_pct}_int_{integer_pct}_sparse_{sparsity}_'
                     f'inter_{int(include_interactions)}_nonlin_{int(include_nonlinear)}_splines_{int(include_splines)}')
     
-    # Define missingness patterns and imputation methods (UNCHANGED)
-    missingness_patterns = [
-        MCARPattern(), MARPattern(), MARType2YPattern(), 
-        MARType2ScorePattern(), MNARPattern(), MARThresholdPattern()
-    ]
-    imputation_methods = [
-        CompleteData(), MeanImputation(), 
-        SingleImputation(use_outcome=None),
-        SingleImputation(use_outcome='y'),
-        SingleImputation(use_outcome='y_score'),
-        MICEImputation(use_outcome=None),
-        MICEImputation(use_outcome='y'),
-        MICEImputation(use_outcome='y_score'),
-        MissForestImputation(use_outcome=None),
-        MissForestImputation(use_outcome='y'),
-        MissForestImputation(use_outcome='y_score'),
-        MLPImputation(use_outcome=None),
-        MLPImputation(use_outcome='y'),
-        MLPImputation(use_outcome='y_score'),
-        AutoencoderImputation(use_outcome=None),
-        AutoencoderImputation(use_outcome='y'),
-        AutoencoderImputation(use_outcome='y_score'),
-        GAINImputation(use_outcome=None),
-        GAINImputation(use_outcome='y'),
-        GAINImputation(use_outcome='y_score')
-    ]
-    
-    # OPTIMIZATION: Pre-define expected_metrics and method lookup outside loop
-    expected_metrics = [
-        # Binary Outcome 'y' Metrics
-        'y_log_loss_mean', 'y_log_loss_std',
-        
-        # Continuous Outcome 'y_score' Metrics
-        'y_score_mse_mean', 'y_score_mse_std',
-        'y_score_r2_mean', 'y_score_r2_std',
-    ]
-    
-    # OPTIMIZATION: Create method lookup dictionary once (eliminates repeated searches)
-    method_lookup = {m.name: m for m in imputation_methods}
+    # Note: imputation_methods are created inside run_single_run based on method_filter
     
     # Prepare RNGs for all runs
     run_rngs = spawn_rngs(parent_rng, num_runs)
@@ -215,7 +204,11 @@ def run_single_combination(args):
     # Each run processes 114 scenarios (6 patterns × 19 methods) sequentially
     # Too many parallel runs → GPU contention, memory pressure, resource competition
     import os
+    import torch
     num_cores_available = int(os.environ.get('SLURM_CPUS_PER_TASK', os.environ.get('NUM_PROCESSES', min(os.cpu_count() or 4, 4))))
+    
+    # Check if GPU is available (affects parallelization strategy)
+    gpu_available = torch.cuda.is_available()
     
     # Allow override via environment variable
     max_parallel_runs = int(os.environ.get('MAX_PARALLEL_RUNS', 0))  # 0 = auto
@@ -236,14 +229,17 @@ def run_single_combination(args):
         num_cores_for_runs = min(8, num_cores_available, num_runs)
     
     logger.info(f"Parallelizing {num_runs} runs across {num_cores_for_runs} processes for param_set: {param_suffix}")
-    if num_runs > 10 and num_cores_for_runs < num_cores_available:
-        logger.info(f"  (Limited to {num_cores_for_runs} parallel runs to reduce GPU/memory contention)")
+    if gpu_available:
+        logger.info(f"  (GPU detected: limiting to {num_cores_for_runs} parallel runs to prevent GPU contention)")
+    elif num_runs > 10 and num_cores_for_runs < num_cores_available:
+        logger.info(f"  (Limited to {num_cores_for_runs} parallel runs to reduce memory contention)")
+    if num_runs > 10:
         logger.info(f"  (Set MAX_PARALLEL_RUNS env var to override)")
     
     # Prepare arguments for each run
     run_args_list = [
         (n, p, continuous_pct, integer_pct, sparsity, include_interactions,
-         include_nonlinear, include_splines, param_suffix, run_idx, run_rngs[run_idx])
+         include_nonlinear, include_splines, param_suffix, run_idx, run_rngs[run_idx], method_filter)
         for run_idx in range(num_runs)
     ]
     
@@ -271,7 +267,8 @@ def run_simulation(
     include_interactions=[False],  
     include_nonlinear=[False],     
     include_splines=[False],       
-    seed=123
+    seed=123,
+    method_filter='all'
 ):
     """
     Run simulation with full factorial design using the refactored framework.
@@ -345,7 +342,7 @@ def run_simulation(
     
     # Prepare arguments for each combination
     parent_rng = default_rng(seed)
-    args_list = [(param_set, spawn_rngs(parent_rng, 1)[0]) for param_set in param_combinations]
+    args_list = [(param_set, spawn_rngs(parent_rng, 1)[0], method_filter) for param_set in param_combinations]
     
     # Run in parallel
     # Use SLURM_CPUS_PER_TASK if on HPC, otherwise use cpu_count() or default to 4
@@ -458,5 +455,18 @@ def run_simulation(
     return results_all, results_averaged
 
 if __name__ == "__main__":
-    results_all, results_averaged = run_simulation(num_runs=2, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
-                                                  include_interactions=[False], include_nonlinear=[False], include_splines=[False])
+    parser = argparse.ArgumentParser(description='Run simulation study')
+    parser.add_argument('--config', type=str, default=None, help='Path to config JSON file')
+    parser.add_argument('--method-filter', type=str, default='all', 
+                        choices=['all', 'cpu', 'gpu'],
+                        help='Filter methods: all, cpu (CPU-only), or gpu (GPU methods)')
+    args = parser.parse_args()
+    
+    method_filter = os.environ.get('METHOD_FILTER', args.method_filter)
+    
+    if args.config:
+        results_all, results_averaged = run_simulation(config_file=args.config, method_filter=method_filter)
+    else:
+        results_all, results_averaged = run_simulation(num_runs=2, n=[50], p=[5], continuous_pct=[0.4], integer_pct=[0.4], sparsity=[0.3],
+                                                      include_interactions=[False], include_nonlinear=[False], include_splines=[False],
+                                                      method_filter=method_filter)
