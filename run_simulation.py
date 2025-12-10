@@ -82,6 +82,84 @@ def load_config(config_path):
     logger.info(f"Loaded configuration from {config_path}")
     return config
 
+def run_single_run(args):
+    """Run a single simulation run. Used for parallelization across runs."""
+    (n, p, continuous_pct, integer_pct, sparsity, include_interactions, 
+     include_nonlinear, include_splines, param_suffix, run_idx, run_rng) = args
+    
+    # Create missingness patterns and imputation methods inside worker
+    # (needed for proper pickling in multiprocessing)
+    missingness_patterns = [
+        MCARPattern(), MARPattern(), MARType2YPattern(), 
+        MARType2ScorePattern(), MNARPattern(), MARThresholdPattern()
+    ]
+    imputation_methods = [
+        CompleteData(), MeanImputation(), 
+        SingleImputation(use_outcome=None),
+        SingleImputation(use_outcome='y'),
+        SingleImputation(use_outcome='y_score'),
+        MICEImputation(use_outcome=None),
+        MICEImputation(use_outcome='y'),
+        MICEImputation(use_outcome='y_score'),
+        MissForestImputation(use_outcome=None),
+        MissForestImputation(use_outcome='y'),
+        MissForestImputation(use_outcome='y_score'),
+        MLPImputation(use_outcome=None),
+        MLPImputation(use_outcome='y'),
+        MLPImputation(use_outcome='y_score'),
+        AutoencoderImputation(use_outcome=None),
+        AutoencoderImputation(use_outcome='y'),
+        AutoencoderImputation(use_outcome='y_score'),
+        GAINImputation(use_outcome=None),
+        GAINImputation(use_outcome='y'),
+        GAINImputation(use_outcome='y_score')
+    ]
+    
+    # Create method lookup
+    method_lookup = {m.name: m for m in imputation_methods}
+    
+    # Expected metrics
+    expected_metrics = [
+        'y_log_loss_mean', 'y_log_loss_std',
+        'y_score_mse_mean', 'y_score_mse_std',
+        'y_score_r2_mean', 'y_score_r2_std',
+    ]
+    
+    # Create NEW study for this run with run-specific RNG
+    study = SimulationStudy(
+        n=n, p=p, num_runs=1,
+        continuous_pct=continuous_pct, integer_pct=integer_pct,
+        sparsity=sparsity, include_interactions=include_interactions,
+        include_nonlinear=include_nonlinear, include_splines=include_splines,
+        rng=run_rng
+    )
+    
+    logger.info(f"Running simulation for param_set: {param_suffix}, run {run_idx}")
+    results = study.run_all(missingness_patterns, imputation_methods)
+    
+    # OPTIMIZATION: Pre-allocate list and use list comprehension where possible
+    run_results = []
+    for key, result in results.items():
+        pattern_name, method_name = key.split(' ', 1)  # Split only on first space
+        # OPTIMIZATION: Use dictionary lookup instead of next() iteration
+        method_instance = method_lookup.get(method_name)
+        imputation_outcome_used = getattr(method_instance, 'use_outcome', None) if method_instance else None
+        
+        # OPTIMIZATION: Build result_dict more efficiently
+        result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
+        result_dict.update({
+            'missingness': pattern_name,
+            'method': method_name,
+            'imputation_outcome_used': imputation_outcome_used or 'none',
+            'param_set': param_suffix,
+            'run_idx': run_idx
+        })
+        
+        run_results.append(pd.DataFrame([result_dict]))
+    
+    # Return concatenated results for this run
+    return pd.concat(run_results, ignore_index=True)
+
 def run_single_combination(args):
     param_set, parent_rng = args
     n, p, num_runs, continuous_pct, integer_pct, sparsity, include_interactions, include_nonlinear, include_splines = param_set
@@ -130,45 +208,52 @@ def run_single_combination(args):
     # OPTIMIZATION: Create method lookup dictionary once (eliminates repeated searches)
     method_lookup = {m.name: m for m in imputation_methods}
     
-    all_run_results = []
+    # Prepare RNGs for all runs
     run_rngs = spawn_rngs(parent_rng, num_runs)
-    for run_idx in range(num_runs):
-        # Spawn FRESH RNG for each run
-        run_rng = run_rngs[run_idx]
-        # Create NEW study for each run with run-specific RNG
-        study = SimulationStudy(
-            n=n, p=p, num_runs=1,  # CHANGED: num_runs=1 (handled by loop)
-            continuous_pct=continuous_pct, integer_pct=integer_pct,
-            sparsity=sparsity, include_interactions=include_interactions,
-            include_nonlinear=include_nonlinear, include_splines=include_splines,
-            rng=run_rng
-        )
-        
-        logger.info(f"Running simulation for param_set: {param_suffix}, run {run_idx}")
-        results = study.run_all(missingness_patterns, imputation_methods)
-        
-        # OPTIMIZATION: Pre-allocate list and use list comprehension where possible
-        run_results = []
-        for key, result in results.items():
-            pattern_name, method_name = key.split(' ', 1)  # Split only on first space
-            # OPTIMIZATION: Use dictionary lookup instead of next() iteration
-            method_instance = method_lookup.get(method_name)
-            imputation_outcome_used = getattr(method_instance, 'use_outcome', None) if method_instance else None
-            
-            # OPTIMIZATION: Build result_dict more efficiently
-            result_dict = {key: result.get(key, np.nan) for key in expected_metrics}
-            result_dict.update({
-                'missingness': pattern_name,
-                'method': method_name,
-                'imputation_outcome_used': imputation_outcome_used or 'none',
-                'param_set': param_suffix,
-                'run_idx': run_idx
-            })
-            
-            run_results.append(pd.DataFrame([result_dict]))
-        
-        # OPTIMIZATION: Concatenate once per run (more efficient than appending to list)
-        all_run_results.append(pd.concat(run_results, ignore_index=True))
+    
+    # PARALLELIZE ACROSS RUNS with smart limiting to reduce resource contention
+    # Each run processes 114 scenarios (6 patterns × 19 methods) sequentially
+    # Too many parallel runs → GPU contention, memory pressure, resource competition
+    import os
+    num_cores_available = int(os.environ.get('SLURM_CPUS_PER_TASK', os.environ.get('NUM_PROCESSES', min(os.cpu_count() or 4, 4))))
+    
+    # Allow override via environment variable
+    max_parallel_runs = int(os.environ.get('MAX_PARALLEL_RUNS', 0))  # 0 = auto
+    
+    if max_parallel_runs > 0:
+        # User-specified limit
+        num_cores_for_runs = min(max_parallel_runs, num_cores_available, num_runs)
+        logger.info(f"Using MAX_PARALLEL_RUNS={max_parallel_runs} (user-specified)")
+    elif num_runs <= 10:
+        # Few runs: use all CPUs (works well, no contention)
+        num_cores_for_runs = min(num_cores_available, num_runs)
+    elif num_runs <= 50:
+        # Moderate runs: limit to reduce contention
+        num_cores_for_runs = min(16, num_cores_available, num_runs)
+    else:
+        # Many runs (50+): aggressively limit to 4-8 parallel runs
+        # This prevents GPU/memory contention while maintaining some parallelism
+        num_cores_for_runs = min(8, num_cores_available, num_runs)
+    
+    logger.info(f"Parallelizing {num_runs} runs across {num_cores_for_runs} processes for param_set: {param_suffix}")
+    if num_runs > 10 and num_cores_for_runs < num_cores_available:
+        logger.info(f"  (Limited to {num_cores_for_runs} parallel runs to reduce GPU/memory contention)")
+        logger.info(f"  (Set MAX_PARALLEL_RUNS env var to override)")
+    
+    # Prepare arguments for each run
+    run_args_list = [
+        (n, p, continuous_pct, integer_pct, sparsity, include_interactions,
+         include_nonlinear, include_splines, param_suffix, run_idx, run_rngs[run_idx])
+        for run_idx in range(num_runs)
+    ]
+    
+    # Run runs in parallel
+    with Pool(processes=num_cores_for_runs) as pool:
+        all_run_results = list(tqdm(
+            pool.imap(run_single_run, run_args_list), 
+            total=num_runs, 
+            desc=f"Runs for {param_suffix}"
+        ))
     
     # Concatenate ALL RUNS
     results_all = pd.concat(all_run_results, ignore_index=True)
@@ -266,9 +351,19 @@ def run_simulation(
     # Use SLURM_CPUS_PER_TASK if on HPC, otherwise use cpu_count() or default to 4
     import os
     num_cores = int(os.environ.get('SLURM_CPUS_PER_TASK', os.environ.get('NUM_PROCESSES', min(os.cpu_count() or 4, 4))))
-    logger.info(f"Using {num_cores} parallel processes")
-    with Pool(processes=num_cores) as pool:
-        run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
+    
+    # If only one combination, run it directly (avoids nested multiprocessing)
+    # The runs within will be parallelized by run_single_combination
+    if len(args_list) == 1:
+        logger.info(f"Single parameter combination detected. Parallelizing runs across {num_cores} processes.")
+        run_results = [run_single_combination(args_list[0])]
+    else:
+        # Multiple combinations: parallelize across combinations
+        # Note: Each combination will parallelize its runs, which may cause nested multiprocessing
+        # For best performance with many runs, consider using only one combination at a time
+        logger.info(f"Using {num_cores} parallel processes for {len(args_list)} parameter combinations")
+        with Pool(processes=num_cores) as pool:
+            run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
 
     # Collect and save results
     all_results = []
