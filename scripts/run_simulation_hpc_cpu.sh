@@ -23,6 +23,10 @@ echo ""
 # Load modules if needed (adjust for your HPC)
 # module load python/3.9
 # module load cuda/11.8  # Not needed for CPU-only
+source ~/.bashrc
+conda activate CSE595
+
+cd /home/yhongda/include_y_mvi/include-outcome-in-mvi
 
 # Set Python path (if needed)
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"

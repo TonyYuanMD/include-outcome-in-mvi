@@ -2,7 +2,7 @@
 #SBATCH --job-name=simulation_gpu
 #SBATCH --output=log/slurm-%j.out
 #SBATCH --error=log/slurm-%j.err
-#SBATCH --time=02:00:00          # Longer time for GPU methods (GAIN/Autoencoder are slow)
+#SBATCH --time=05:00:00          # Longer time for GPU methods (GAIN/Autoencoder are slow)
 #SBATCH --cpus-per-task=8        # Fewer CPUs to reduce GPU contention
 #SBATCH --mem=32G                 # Memory per node
 #SBATCH --nodes=1                 # Number of nodes
@@ -25,7 +25,10 @@ echo ""
 # Load modules if needed (adjust for your HPC)
 # module load python/3.9
 # module load cuda/11.8
+source ~/.bashrc
+conda activate CSE595
 
+cd /home/yhongda/include_y_mvi/include-outcome-in-mvi
 # Set Python path (if needed)
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 

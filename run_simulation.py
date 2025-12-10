@@ -214,7 +214,11 @@ def run_single_combination(args):
     # Allow override via environment variable
     max_parallel_runs = int(os.environ.get('MAX_PARALLEL_RUNS', 0))  # 0 = auto
     
-    if max_parallel_runs > 0:
+    # If GPU-only methods, be extremely conservative: run 1 process to avoid CUDA busy errors
+    if gpu_available and method_filter == 'gpu':
+        num_cores_for_runs = 1
+        logger.info("GPU-only methods detected; forcing single process to avoid CUDA contention.")
+    elif max_parallel_runs > 0:
         # User-specified limit
         num_cores_for_runs = min(max_parallel_runs, num_cores_available, num_runs)
         logger.info(f"Using MAX_PARALLEL_RUNS={max_parallel_runs} (user-specified)")

@@ -311,6 +311,13 @@ class AutoencoderImputation(ImputationMethod):
                 optimizer.step()
             mask_missing = data[col_miss].isna().any(axis=1)
             X_missing = dat_imputed.loc[mask_missing, predictors + col_miss].fillna(0)
+            # If there are no rows with missing values, skip transform to avoid empty array errors
+            if X_missing.shape[0] == 0:
+                for out in ['y', 'y_score']:
+                    if out in original_data.columns and out not in dat_imputed.columns:
+                        dat_imputed[out] = original_data[out]
+                dat_imputed_list.append(dat_imputed)
+                continue
             X_missing_scaled = scaler.transform(X_missing)
             X_missing_tensor = torch.FloatTensor(X_missing_scaled).to(device)
             with torch.no_grad():
