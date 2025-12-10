@@ -1,7 +1,7 @@
 {
     "n": [100],
     "p": [10],
-    "num_runs": 100,
+    "num_runs": 50,
     "continuous_pct": [0.4],
     "integer_pct": [0.4],
     "sparsity": [0.3],

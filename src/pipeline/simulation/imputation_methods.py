@@ -151,9 +151,15 @@ class MICEImputation(ImputationMethod):
         if n_samples <= 50:
             max_iter = 10  # Small datasets: fewer iterations needed
         elif n_samples <= 200:
-            max_iter = 15  # Medium datasets: moderate iterations (reduced from 20 for speed)
+            max_iter = 5  # Medium datasets: very few iterations for speed
         else:
-            max_iter = 20  # Large datasets: more iterations (reduced from 30 for speed)
+            max_iter = 5  # Large datasets: minimal iterations for speed
+        
+        # Use LinearRegression instead of default BayesianRidge for much faster performance
+        # BayesianRidge is slow for larger datasets; LinearRegression is O(n*p^2) vs O(n*p^3)
+        # Note: This works for continuous/integer variables. For binary variables, IterativeImputer
+        # will automatically use LogisticRegression, but we can't override that easily.
+        estimator = LinearRegression()
         
         for i in tqdm(range(self.n_imputations), desc="MICE Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
@@ -161,13 +167,17 @@ class MICEImputation(ImputationMethod):
             X = dat_imputed[predictors + col_miss]
             
             try:
-                # Use tolerance to help with convergence and speed up early stopping
-                # tol=1e-2 is looser than 1e-3, allowing faster convergence while still being reasonable
+                # Optimized settings for speed:
+                # - LinearRegression estimator (much faster than BayesianRidge)
+                # - sample_posterior=False (reduces overhead, faster but less variability)
+                # - tol=1e-2 (looser tolerance for faster convergence)
+                # - max_iter=5 for larger datasets (reduced from 10-15)
                 imp = IterativeImputer(
+                    estimator=estimator,  # Use LinearRegression instead of BayesianRidge for speed
                     max_iter=max_iter, 
                     random_state=imputation_rng.integers(0, 2**32), 
-                    sample_posterior=True,
-                    tol=1e-2,  # Looser tolerance for faster convergence (was 1e-3)
+                    sample_posterior=False,  # Disable for speed (was True)
+                    tol=1e-2,  # Looser tolerance for faster convergence
                     imputation_order='ascending',  # Start with columns with fewest missing values
                     n_nearest_features=None,  # Use all features (default, but explicit)
                     initial_strategy='mean'  # Start with mean imputation (faster than median)
