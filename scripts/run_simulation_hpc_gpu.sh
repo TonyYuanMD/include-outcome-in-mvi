@@ -8,7 +8,7 @@
 #SBATCH --nodes=1                 # Number of nodes
 #SBATCH --ntasks=1                # Single task (multiprocessing handles parallelism)
 #SBATCH --account=ling702w25_class
-#SBATCH --gres=gpu:1              # GPU for GAIN/Autoencoder
+#SBATCH --gres=gpu:1             # GPU for GAIN/Autoencoder
 #SBATCH --partition=gpu           # GPU partition
 # Note: This script runs GPU methods (Autoencoder, GAIN)
 #       For CPU-only methods, use run_simulation_hpc_cpu.sh

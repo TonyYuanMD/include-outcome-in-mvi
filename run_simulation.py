@@ -1,4 +1,5 @@
 from multiprocessing import Pool
+import multiprocessing as mp
 import os
 import json
 import logging
@@ -243,8 +244,9 @@ def run_single_combination(args):
         for run_idx in range(num_runs)
     ]
     
-    # Run runs in parallel
-    with Pool(processes=num_cores_for_runs) as pool:
+    # Run runs in parallel using spawn context (needed for CUDA in subprocesses)
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=num_cores_for_runs) as pool:
         all_run_results = list(tqdm(
             pool.imap(run_single_run, run_args_list), 
             total=num_runs, 
@@ -359,7 +361,8 @@ def run_simulation(
         # Note: Each combination will parallelize its runs, which may cause nested multiprocessing
         # For best performance with many runs, consider using only one combination at a time
         logger.info(f"Using {num_cores} parallel processes for {len(args_list)} parameter combinations")
-        with Pool(processes=num_cores) as pool:
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=num_cores) as pool:
             run_results = list(tqdm(pool.imap(run_single_combination, args_list), total=len(args_list), desc="Parameter Combinations"))
 
     # Collect and save results
