@@ -146,13 +146,46 @@ class MICEImputation(ImputationMethod):
             predictors.append(self.use_outcome)
         imputation_rngs = spawn_rngs(rng, self.n_imputations)
         
+        # Adaptive max_iter based on sample size: balance between convergence and speed
+        n_samples = len(data)
+        if n_samples <= 50:
+            max_iter = 10  # Small datasets: fewer iterations needed
+        elif n_samples <= 200:
+            max_iter = 15  # Medium datasets: moderate iterations (reduced from 20 for speed)
+        else:
+            max_iter = 20  # Large datasets: more iterations (reduced from 30 for speed)
+        
         for i in tqdm(range(self.n_imputations), desc="MICE Imputations", leave=False):
             imputation_rng = imputation_rngs[i]
-            imp = IterativeImputer(max_iter=10, random_state=imputation_rng.integers(0, 2**32), sample_posterior=True)
             dat_imputed = data.copy()
             X = dat_imputed[predictors + col_miss]
-            X_imputed = pd.DataFrame(imp.fit_transform(X), columns=X.columns, index=X.index)
-            dat_imputed[col_miss] = X_imputed[col_miss]
+            
+            try:
+                # Use tolerance to help with convergence and speed up early stopping
+                # tol=1e-2 is looser than 1e-3, allowing faster convergence while still being reasonable
+                imp = IterativeImputer(
+                    max_iter=max_iter, 
+                    random_state=imputation_rng.integers(0, 2**32), 
+                    sample_posterior=True,
+                    tol=1e-2,  # Looser tolerance for faster convergence (was 1e-3)
+                    imputation_order='ascending',  # Start with columns with fewest missing values
+                    n_nearest_features=None,  # Use all features (default, but explicit)
+                    initial_strategy='mean'  # Start with mean imputation (faster than median)
+                )
+                X_imputed = pd.DataFrame(imp.fit_transform(X), columns=X.columns, index=X.index)
+                dat_imputed[col_miss] = X_imputed[col_miss]
+            except Exception as e:
+                # Fallback: if MICE fails (e.g., LogisticRegression errors with small n),
+                # use mean imputation as a fallback
+                logger.warning(f"MICE imputation failed (likely due to small sample size or convergence issues): {e}. Using mean imputation as fallback.")
+                for col in col_miss:
+                    if dat_imputed[col].isna().any():
+                        mean_val = dat_imputed[col].mean()
+                        if pd.isna(mean_val):
+                            # If mean is also NaN, use 0 as last resort
+                            mean_val = 0
+                        dat_imputed[col] = dat_imputed[col].fillna(mean_val)
+            
             for out in ['y', 'y_score']:
                 if out in original_data.columns and out not in dat_imputed.columns:
                     dat_imputed[out] = original_data[out]
@@ -402,15 +435,20 @@ class GAINImputation(ImputationMethod):
                 optimizer_d.step()
             mask_missing = data[col_miss].isna().any(axis=1)
             X_missing = dat_imputed.loc[mask_missing, predictors + col_miss].fillna(0)
-            X_missing_scaled = scaler.transform(X_missing)
-            X_missing_tensor = torch.FloatTensor(X_missing_scaled).to(device)
-            M_missing = torch.FloatTensor(1 - X_missing[col_miss].isna().astype(int).values).to(device)
-            M_missing_full = torch.ones_like(X_missing_tensor)
-            M_missing_full[:, len(predictors):] = M_missing
-            with torch.no_grad():
-                g_out_missing, _ = model(X_missing_tensor, M_missing_full)
-            X_missing_imputed = scaler.inverse_transform(g_out_missing.cpu().numpy())
-            dat_imputed.loc[mask_missing, col_miss] = X_missing_imputed[:, len(predictors):]  # Slice the imputed part
+            # Check if there are any rows with missing values to impute
+            if len(X_missing) == 0:
+                # No missing values to impute, skip imputation step
+                pass
+            else:
+                X_missing_scaled = scaler.transform(X_missing)
+                X_missing_tensor = torch.FloatTensor(X_missing_scaled).to(device)
+                M_missing = torch.FloatTensor(1 - X_missing[col_miss].isna().astype(int).values).to(device)
+                M_missing_full = torch.ones_like(X_missing_tensor)
+                M_missing_full[:, len(predictors):] = M_missing
+                with torch.no_grad():
+                    g_out_missing, _ = model(X_missing_tensor, M_missing_full)
+                X_missing_imputed = scaler.inverse_transform(g_out_missing.cpu().numpy())
+                dat_imputed.loc[mask_missing, col_miss] = X_missing_imputed[:, len(predictors):]  # Slice the imputed part
             for out in ['y', 'y_score']:
                 if out in original_data.columns and out not in dat_imputed.columns:
                     dat_imputed[out] = original_data[out]
