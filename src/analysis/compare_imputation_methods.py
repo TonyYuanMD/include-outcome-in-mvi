@@ -29,33 +29,39 @@ def discover_report_dirs(base_dir='results/report/', use_latest_only=False):
     --------
     list : List of report directory paths
     """
-    report_dirs = list(Path(base_dir).glob('n_*'))
-    if not report_dirs:
-        logger.error(f"No report directories found in {base_dir}")
+    # Look for directories matching various patterns (n_*, cpu_n_*, gpu_n_*, etc.)
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        logger.error(f"Base directory does not exist: {base_dir}")
         return []
     
-    # Filter out empty directories (directories without results_averaged.csv)
-    valid_dirs = []
-    for d in report_dirs:
-        results_file = d / 'results_averaged.csv'
-        if results_file.exists():
-            valid_dirs.append(d)
-        else:
-            logger.debug(f"Skipping empty directory: {d.name}")
+    # Get all subdirectories
+    all_dirs = [d for d in base_path.iterdir() if d.is_dir()]
     
-    if not valid_dirs:
+    # Filter for directories that look like report directories (contain results_averaged.csv)
+    # and match common naming patterns
+    report_dirs = []
+    for d in all_dirs:
+        results_file = d / 'results_averaged.csv'
+        if results_file.exists() and results_file.stat().st_size > 0:
+            # Check if directory name suggests it's a report directory
+            # (contains 'n_' or 'cpu_n_' or 'gpu_n_' etc.)
+            if 'n_' in d.name or 'cpu' in d.name.lower() or 'gpu' in d.name.lower():
+                report_dirs.append(d)
+    
+    if not report_dirs:
         logger.error(f"No valid report directories found in {base_dir} (all are empty or missing results_averaged.csv)")
         return []
     
     if use_latest_only:
         # Sort by modification time of results_averaged.csv, get the most recent
-        valid_dirs = sorted(valid_dirs, key=lambda p: (p / 'results_averaged.csv').stat().st_mtime, reverse=True)
-        latest_dir = valid_dirs[0]
+        report_dirs = sorted(report_dirs, key=lambda p: (p / 'results_averaged.csv').stat().st_mtime, reverse=True)
+        latest_dir = report_dirs[0]
         logger.info(f"Using only the most recent directory: {latest_dir.name}")
         return [str(latest_dir)]
     else:
-        logger.info(f"Found {len(valid_dirs)} report directories: {[d.name for d in valid_dirs]}")
-        return [str(d) for d in valid_dirs]
+        logger.info(f"Found {len(report_dirs)} report directories: {[d.name for d in report_dirs]}")
+        return [str(d) for d in report_dirs]
 
 def load_results(report_dir):
     """Load results_all_runs.csv and results_averaged.csv from a report directory."""
@@ -236,7 +242,7 @@ def compare_methods(report_dirs):
             capsize=4
         )
 
-    plt.axhline(y=0.693, color='r', linestyle='--', linewidth=1, label='Random Guess (0.693)')
+    # plt.axhline(y=0.693, color='r', linestyle='--', linewidth=1, label='Random Guess (0.693)')
     plt.title('Effect of Outcome Inclusion on Binary Prediction Utility (MAR Missingness)')
     plt.ylabel('Mean Log Loss for $Y$ (Lower is Better)')
     plt.xlabel('Imputation Method')
@@ -268,7 +274,7 @@ def compare_methods(report_dirs):
     plt.ylabel('STD of Mean Log Loss Across Runs (Lower is More Stable)')
     
     # Add a visual guide for the ideal region
-    plt.axvline(x=0.693, color='r', linestyle='--', linewidth=1, label='Random Baseline')
+    # plt.axvline(x=0.693, color='r', linestyle='--', linewidth=1, label='Random Baseline')
     
     plt.legend(title='Method/Missingness', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True, linestyle='--', alpha=0.5)
@@ -280,19 +286,50 @@ def compare_methods(report_dirs):
 
 if __name__ == "__main__":
     import sys
+    import argparse
     
-    # Automatically discover all report directories
-    BASE_DIR = 'results/report/'
+    parser = argparse.ArgumentParser(description='Compare imputation methods across simulation results')
+    parser.add_argument('--latest', '-l', action='store_true', 
+                       help='Analyze only the most recent report directory')
+    parser.add_argument('--dir', '-d', type=str, default=None,
+                       help='Analyze a specific report directory (relative to results/report/ or absolute path)')
+    parser.add_argument('--base-dir', type=str, default='results/report/',
+                       help='Base directory to search for report directories (default: results/report/)')
     
-    # Check if user wants to analyze only the latest run
-    # Usage: python compare_imputation_methods.py --latest
-    use_latest_only = '--latest' in sys.argv or '-l' in sys.argv
+    args = parser.parse_args()
     
-    report_dirs = discover_report_dirs(BASE_DIR, use_latest_only=use_latest_only)
+    BASE_DIR = args.base_dir
+    
+    # If specific directory is provided, use it
+    if args.dir:
+        # Check if it's an absolute path or relative
+        if os.path.isabs(args.dir):
+            report_dir = args.dir
+        else:
+            # Try relative to base_dir first, then relative to current directory
+            if os.path.exists(os.path.join(BASE_DIR, args.dir)):
+                report_dir = os.path.join(BASE_DIR, args.dir)
+            elif os.path.exists(args.dir):
+                report_dir = args.dir
+            else:
+                logger.error(f"Directory not found: {args.dir}")
+                sys.exit(1)
+        
+        # Verify it has results_averaged.csv
+        if not os.path.exists(os.path.join(report_dir, 'results_averaged.csv')):
+            logger.error(f"Directory {report_dir} does not contain results_averaged.csv")
+            sys.exit(1)
+        
+        report_dirs = [report_dir]
+        logger.info(f"Analyzing specific directory: {report_dir}")
+    else:
+        # Automatically discover all report directories
+        use_latest_only = args.latest
+        report_dirs = discover_report_dirs(BASE_DIR, use_latest_only=use_latest_only)
     
     if report_dirs:
         logger.info(f"Found {len(report_dirs)} report directory(ies) to analyze")
         compare_methods(report_dirs)
     else:
-        logger.error(f"Analysis aborted: No report directories found in {BASE_DIR}")
+        logger.error(f"Analysis aborted: No report directories found")
         logger.error("Please run 'make simulate' first to generate simulation results.")
