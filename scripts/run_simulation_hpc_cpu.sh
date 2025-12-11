@@ -2,7 +2,7 @@
 #SBATCH --job-name=simulation_cpu
 #SBATCH --output=log/slurm-%j.out
 #SBATCH --error=log/slurm-%j.err
-#SBATCH --time=01:00:00          # Maximum runtime (adjust based on your config)
+#SBATCH --time=04:00:00          # Maximum runtime (adjust based on your config)
 #SBATCH --cpus-per-task=32       # Number of CPU cores (parallelizes across runs)
 #SBATCH --mem=32G                 # Memory per node (adjust based on CPU count)
 #SBATCH --nodes=1                 # Number of nodes
