@@ -29,33 +29,39 @@ def discover_report_dirs(base_dir='results/report/', use_latest_only=False):
     --------
     list : List of report directory paths
     """
-    report_dirs = list(Path(base_dir).glob('n_*'))
-    if not report_dirs:
-        logger.error(f"No report directories found in {base_dir}")
+    # Look for directories matching various patterns (n_*, cpu_n_*, gpu_n_*, etc.)
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        logger.error(f"Base directory does not exist: {base_dir}")
         return []
     
-    # Filter out empty directories (directories without results_averaged.csv)
-    valid_dirs = []
-    for d in report_dirs:
-        results_file = d / 'results_averaged.csv'
-        if results_file.exists():
-            valid_dirs.append(d)
-        else:
-            logger.debug(f"Skipping empty directory: {d.name}")
+    # Get all subdirectories
+    all_dirs = [d for d in base_path.iterdir() if d.is_dir()]
     
-    if not valid_dirs:
+    # Filter for directories that look like report directories (contain results_averaged.csv)
+    # and match common naming patterns
+    report_dirs = []
+    for d in all_dirs:
+        results_file = d / 'results_averaged.csv'
+        if results_file.exists() and results_file.stat().st_size > 0:
+            # Check if directory name suggests it's a report directory
+            # (contains 'n_' or 'cpu_n_' or 'gpu_n_' etc.)
+            if 'n_' in d.name or 'cpu' in d.name.lower() or 'gpu' in d.name.lower():
+                report_dirs.append(d)
+    
+    if not report_dirs:
         logger.error(f"No valid report directories found in {base_dir} (all are empty or missing results_averaged.csv)")
         return []
     
     if use_latest_only:
         # Sort by modification time of results_averaged.csv, get the most recent
-        valid_dirs = sorted(valid_dirs, key=lambda p: (p / 'results_averaged.csv').stat().st_mtime, reverse=True)
-        latest_dir = valid_dirs[0]
+        report_dirs = sorted(report_dirs, key=lambda p: (p / 'results_averaged.csv').stat().st_mtime, reverse=True)
+        latest_dir = report_dirs[0]
         logger.info(f"Using only the most recent directory: {latest_dir.name}")
         return [str(latest_dir)]
     else:
-        logger.info(f"Found {len(valid_dirs)} report directories: {[d.name for d in valid_dirs]}")
-        return [str(d) for d in valid_dirs]
+        logger.info(f"Found {len(report_dirs)} report directories: {[d.name for d in report_dirs]}")
+        return [str(d) for d in report_dirs]
 
 def load_results(report_dir):
     """Load results_all_runs.csv and results_averaged.csv from a report directory."""
@@ -139,6 +145,14 @@ def compare_methods(report_dirs):
     for report_dir in report_dirs:
         results_all, results_avg = load_results(report_dir)
         if results_avg is not None:
+            # Add source identifier (CPU vs GPU) based on directory name
+            dir_name = os.path.basename(os.path.normpath(report_dir))
+            if dir_name.startswith('cpu'):
+                results_avg['source'] = 'CPU'
+            elif dir_name.startswith('gpu'):
+                results_avg['source'] = 'GPU'
+            else:
+                results_avg['source'] = 'Unknown'
             all_results_avg.append(results_avg)
         else:
             logger.warning(f"Skipping {report_dir} due to missing or invalid averaged data")
@@ -150,6 +164,7 @@ def compare_methods(report_dirs):
     # Use averaged results for visualization and statistical tests
     combined_results_avg = pd.concat(all_results_avg, ignore_index=True)
     logger.info(f"Combined averaged results shape: {combined_results_avg.shape}")
+    logger.info(f"Source distribution: {combined_results_avg['source'].value_counts().to_dict()}")
     
     # Rename the new run-level STD columns for better plotting names
     # Example: 'y_log_loss_mean_std_runs' -> 'Log_Loss_STD_Runs'
@@ -236,7 +251,7 @@ def compare_methods(report_dirs):
             capsize=4
         )
 
-    plt.axhline(y=0.693, color='r', linestyle='--', linewidth=1, label='Random Guess (0.693)')
+    # plt.axhline(y=0.693, color='r', linestyle='--', linewidth=1, label='Random Guess (0.693)')
     plt.title('Effect of Outcome Inclusion on Binary Prediction Utility (MAR Missingness)')
     plt.ylabel('Mean Log Loss for $Y$ (Lower is Better)')
     plt.xlabel('Imputation Method')
@@ -268,31 +283,130 @@ def compare_methods(report_dirs):
     plt.ylabel('STD of Mean Log Loss Across Runs (Lower is More Stable)')
     
     # Add a visual guide for the ideal region
-    plt.axvline(x=0.693, color='r', linestyle='--', linewidth=1, label='Random Baseline')
+    # plt.axvline(x=0.693, color='r', linestyle='--', linewidth=1, label='Random Baseline')
     
     plt.legend(title='Method/Missingness', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     plt.savefig(os.path.join(figures_dir, 'y_log_loss_stability_plot.png'), dpi=300)
     plt.close()
+    
+    # --- VISUALIZATION 4: CPU vs GPU Comparison (if source column exists) ---
+    if 'source' in df.columns and df['source'].nunique() > 1:
+        logger.info("Generating CPU vs GPU Comparison Plot...")
+        
+        # Filter for methods that exist in both CPU and GPU
+        methods_in_both = []
+        for method in df['method'].unique():
+            method_df = df[df['method'] == method]
+            if method_df['source'].nunique() > 1:
+                methods_in_both.append(method)
+        
+        if methods_in_both:
+            # Create comparison plot for Log Loss
+            fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+            
+            # Plot 1: Log Loss comparison
+            ax1 = axes[0]
+            comparison_data = df[df['method'].isin(methods_in_both)].copy()
+            comparison_pivot = comparison_data.pivot_table(
+                values='Log_Loss_Mean', 
+                index='method', 
+                columns='source', 
+                aggfunc='mean'
+            )
+            
+            x = np.arange(len(comparison_pivot.index))
+            width = 0.35
+            
+            if 'CPU' in comparison_pivot.columns and 'GPU' in comparison_pivot.columns:
+                ax1.bar(x - width/2, comparison_pivot['CPU'], width, label='CPU', alpha=0.8)
+                ax1.bar(x + width/2, comparison_pivot['GPU'], width, label='GPU', alpha=0.8)
+                ax1.set_xlabel('Imputation Method')
+                ax1.set_ylabel('Mean Log Loss (Lower is Better)')
+                ax1.set_title('CPU vs GPU: Log Loss Performance')
+                ax1.set_xticks(x)
+                ax1.set_xticklabels(comparison_pivot.index, rotation=45, ha='right')
+                ax1.legend()
+                ax1.grid(True, linestyle='--', alpha=0.3)
+            
+            # Plot 2: R² comparison
+            ax2 = axes[1]
+            comparison_pivot_r2 = comparison_data.pivot_table(
+                values='R2_Mean', 
+                index='method', 
+                columns='source', 
+                aggfunc='mean'
+            )
+            
+            if 'CPU' in comparison_pivot_r2.columns and 'GPU' in comparison_pivot_r2.columns:
+                ax2.bar(x - width/2, comparison_pivot_r2['CPU'], width, label='CPU', alpha=0.8)
+                ax2.bar(x + width/2, comparison_pivot_r2['GPU'], width, label='GPU', alpha=0.8)
+                ax2.set_xlabel('Imputation Method')
+                ax2.set_ylabel('Mean R² (Higher is Better)')
+                ax2.set_title('CPU vs GPU: R² Performance')
+                ax2.set_xticks(x)
+                ax2.set_xticklabels(comparison_pivot_r2.index, rotation=45, ha='right')
+                ax2.legend()
+                ax2.grid(True, linestyle='--', alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(figures_dir, 'cpu_vs_gpu_comparison.png'), dpi=300)
+            plt.close()
+            
+            logger.info(f"CPU vs GPU comparison includes {len(methods_in_both)} methods: {methods_in_both}")
 
     logger.info(f"Analysis complete. Tables in {tables_dir}, figures in {figures_dir}")
 
 if __name__ == "__main__":
     import sys
+    import argparse
     
-    # Automatically discover all report directories
-    BASE_DIR = 'results/report/'
+    parser = argparse.ArgumentParser(description='Compare imputation methods across simulation results')
+    parser.add_argument('--latest', '-l', action='store_true', 
+                       help='Analyze only the most recent report directory')
+    parser.add_argument('--dir', '-d', type=str, default=None, nargs='+',
+                       help='Analyze specific report directory(ies) (relative to results/report/ or absolute path). Can specify multiple directories.')
+    parser.add_argument('--base-dir', type=str, default='results/report/',
+                       help='Base directory to search for report directories (default: results/report/)')
     
-    # Check if user wants to analyze only the latest run
-    # Usage: python compare_imputation_methods.py --latest
-    use_latest_only = '--latest' in sys.argv or '-l' in sys.argv
+    args = parser.parse_args()
     
-    report_dirs = discover_report_dirs(BASE_DIR, use_latest_only=use_latest_only)
+    BASE_DIR = args.base_dir
+    
+    # If specific directory(ies) is provided, use it/them
+    if args.dir:
+        report_dirs = []
+        for dir_arg in args.dir:
+            # Check if it's an absolute path or relative
+            if os.path.isabs(dir_arg):
+                report_dir = dir_arg
+            else:
+                # Try relative to base_dir first, then relative to current directory
+                if os.path.exists(os.path.join(BASE_DIR, dir_arg)):
+                    report_dir = os.path.join(BASE_DIR, dir_arg)
+                elif os.path.exists(dir_arg):
+                    report_dir = dir_arg
+                else:
+                    logger.error(f"Directory not found: {dir_arg}")
+                    sys.exit(1)
+            
+            # Verify it has results_averaged.csv
+            if not os.path.exists(os.path.join(report_dir, 'results_averaged.csv')):
+                logger.error(f"Directory {report_dir} does not contain results_averaged.csv")
+                sys.exit(1)
+            
+            report_dirs.append(report_dir)
+        
+        logger.info(f"Analyzing {len(report_dirs)} specific directory(ies): {[os.path.basename(d) for d in report_dirs]}")
+    else:
+        # Automatically discover all report directories
+        use_latest_only = args.latest
+        report_dirs = discover_report_dirs(BASE_DIR, use_latest_only=use_latest_only)
     
     if report_dirs:
         logger.info(f"Found {len(report_dirs)} report directory(ies) to analyze")
         compare_methods(report_dirs)
     else:
-        logger.error(f"Analysis aborted: No report directories found in {BASE_DIR}")
+        logger.error(f"Analysis aborted: No report directories found")
         logger.error("Please run 'make simulate' first to generate simulation results.")
