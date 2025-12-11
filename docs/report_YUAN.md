@@ -1,6 +1,6 @@
 # Missing Value Imputation: Evaluating the Impact of Outcome Inclusion on Predictive Utility
 
-**Author:** Yuan  
+**Author:** Hongda Yuan  
 **Project:** Include Y in Multivariate Value Imputation (MVI)  
 **Date:** December 2025
 
@@ -10,32 +10,42 @@
 
 ### What Problem Were You Trying to Solve?
 
-Missing data is ubiquitous in real-world datasets, particularly in clinical research, survey data, and observational studies. When building predictive models, researchers must decide how to handle missing values. A fundamental question arises: **Should the outcome variable (the variable we want to predict) be included in the imputation process?**
+Missing data is ubiquitous in real-world datasets, particularly in clinical research, survey data, and observational studies. When building predictive models, researchers must decide how to handle missing values. A fundamental question arises: **Should the outcome variable (the variable we want to predict) be included in the imputation process, especially when using deep learning methods?**
 
 This question matters because:
 
-1. **Theoretical Tension:** Traditional statistical advice often warns against using the outcome in imputation to avoid "data leakage" and preserve the separation between training and testing. However, if the goal is **predictive utility** (how well the imputed data supports downstream prediction), including the outcome might actually improve performance.
+1. **Deep Learning Methods and Outcome Inclusion:** Modern deep learning imputation methods (Autoencoders, GAIN, MLP-based imputation) are increasingly popular for handling missing data, but there is limited guidance on whether these methods should include the outcome variable during training. Unlike traditional statistical methods (MICE, MissForest) where outcome inclusion has been studied, deep learning methods have different architectures and training dynamics that may respond differently to outcome inclusion. **This study specifically addresses whether deep learning imputation methods benefit from outcome inclusion when the goal is downstream prediction performance.**
 
-2. **Practical Impact:** Many researchers face this dilemma when preparing data for machine learning models. The choice between including or excluding the outcome can significantly affect model performance, but there is limited empirical evidence comparing these approaches across different imputation methods and missingness mechanisms.
+2. **Downstream Task Focus:** The primary goal of imputation in many real-world applications is not to perfectly recover missing values, but rather to produce imputed data that **maximizes performance on downstream prediction tasks**. For example:
+   - In clinical settings, researchers impute missing patient data to build models that predict disease outcomes
+   - In survey research, missing responses are imputed to enable analysis of relationships between variables
+   - In observational studies, missing covariates are imputed to support causal inference or prediction models
+   
+   **This study evaluates imputation methods based on their utility for downstream tasks** (Logistic Regression for binary outcomes, Linear Regression for continuous outcomes), rather than imputation accuracy per se. This utility-based evaluation directly answers: "Does including the outcome in imputation lead to better downstream predictions?"
 
-3. **Methodological Gap:** While extensive research exists on imputation methods (MICE, MissForest, deep learning methods like GAIN), few studies systematically evaluate whether outcome inclusion improves **predictive utility** (as opposed to parameter estimation accuracy) across different missingness patterns.
+3. **Theoretical Tension:** Traditional statistical advice often warns against using the outcome in imputation to avoid "data leakage" and preserve the separation between training and testing. However, when the goal is **predictive utility** (how well the imputed data supports downstream prediction), including the outcome might actually improve performance—especially for deep learning methods that can learn complex relationships between the outcome and missing patterns.
+
+4. **Methodological Gap:** While extensive research exists on imputation methods (MICE, MissForest, deep learning methods like GAIN), few studies systematically evaluate:
+   - Whether **deep learning methods** specifically benefit from outcome inclusion
+   - Whether outcome inclusion improves **downstream prediction performance** (as opposed to parameter estimation accuracy)
+   - How this varies across different missingness mechanisms (MCAR, MAR, MNAR)
 
 ### Why Does It Matter?
 
-This research addresses a critical methodological question with broad implications:
-
-- **For Research Groups:** Provides evidence-based guidance on when to include outcome variables in imputation for prediction tasks, potentially improving model performance in ongoing research projects.
+This research addresses critical methodological questions with broad implications, with particular emphasis on deep learning methods and downstream prediction tasks:
 
 - **For the Broader Community:** 
-  - **Clinical Researchers:** Many clinical datasets have missing values, and understanding optimal imputation strategies can improve patient outcome predictions.
-  - **Data Scientists:** Offers practical guidance for handling missing data in machine learning pipelines.
-  - **Methodologists:** Contributes to the theoretical understanding of imputation under different missingness mechanisms.
+  - **Clinical Researchers:** Many clinical datasets have missing values, and understanding whether deep learning imputation methods (Autoencoders, GAIN) benefit from outcome inclusion can improve patient outcome predictions. The downstream task focus ensures recommendations are directly applicable to prediction scenarios.
+  - **Data Scientists:** Offers practical guidance for handling missing data in machine learning pipelines, with specific recommendations for deep learning-based imputation methods that are increasingly popular in modern workflows.
+  - **Methodologists:** Contributes to the theoretical understanding of imputation under different missingness mechanisms, with a focus on how deep learning architectures respond to outcome inclusion compared to traditional statistical methods.
 
-- **Real-World Applications:** The findings can inform best practices in:
-  - Electronic health records analysis
-  - Survey data analysis
-  - Observational studies
-  - Any domain where missing data and prediction are both present
+- **Real-World Applications:** The findings can inform best practices in scenarios where **downstream prediction is the primary goal**:
+  - **Electronic health records analysis:** Impute missing patient data to predict disease outcomes or treatment responses
+  - **Survey data analysis:** Impute missing responses to enable prediction of survey outcomes
+  - **Observational studies:** Impute missing covariates to support prediction models for policy or clinical decision-making
+  - **Any domain where missing data and prediction are both present:** The utility-based evaluation framework ensures recommendations are directly applicable to prediction-focused applications
+
+**Key Innovation:** This study uniquely combines (1) focus on deep learning imputation methods, (2) utility-based evaluation via downstream prediction tasks, and (3) systematic comparison across multiple missingness mechanisms—addressing a gap in the current literature.
 
 ---
 
@@ -106,33 +116,14 @@ Results are aggregated across:
 
 ### Which Course Concepts/Tools/Techniques Did You Use?
 
-1. **Statistical Methods:**
-   - Multiple Imputation (MICE)
-   - Missing Data Mechanisms (MCAR, MAR, MNAR)
-   - ANOVA for comparing methods
-   - Monte Carlo simulation
-
-2. **Machine Learning:**
-   - Random Forest (MissForest)
-   - Neural Networks (MLP, Autoencoder)
-   - Generative Adversarial Networks (GAIN)
-   - Logistic/Linear Regression for evaluation
-
-3. **Software Engineering:**
+1. **Software Engineering:**
    - Object-oriented design (abstract base classes for imputation methods)
    - Parallel processing (multiprocessing for large-scale simulations)
    - Configuration management (JSON config files)
    - Testing frameworks (pytest, regression testing)
    - Profiling and optimization (cProfile, performance benchmarking)
 
-4. **Data Science Tools:**
-   - NumPy/Pandas for data manipulation
-   - Scikit-learn for ML models
-   - PyTorch for deep learning
-   - Matplotlib/Seaborn for visualization
-   - Statistical analysis (scipy.stats)
-
-5. **High-Performance Computing:**
+2. **High-Performance Computing:**
    - SLURM job scheduling
    - Resource allocation (CPU cores, memory)
    - Parallel execution strategies
@@ -143,82 +134,77 @@ Results are aggregated across:
 
 ### Simulation Configuration
 
-The large-scale simulation analyzed here used:
-- **Sample size:** n = 100
-- **Predictors:** p = 10
+Two large-scale simulations were combined for analysis:
+
+**CPU Simulation:**
+- **Sample size:** n = 100, **Predictors:** p = 10
 - **Runs:** 100 Monte Carlo replicates
-- **Missingness patterns:** 6 patterns
-- **Imputation methods:** 8 methods × 3 outcome variants = 24 method variants
-- **Total scenarios:** 100 runs × 6 patterns × 24 methods = 14,400 individual scenarios
-- **Data complexity:** Interactions, nonlinear terms, and splines enabled
+- **Methods:** 4 CPU-based methods (Single, MICE, MissForest, MLP) × 3 outcome variants + 2 CPU-based methods (Complete Data, Mean) = 14 variants
+- **Total scenarios:** 100 runs × 6 patterns × 14 methods = 8,400 scenarios
+
+**GPU Simulation:**
+- **Sample size:** n = 100, **Predictors:** p = 10
+- **Runs:** 50 Monte Carlo replicates
+- **Methods:** 2 deep learning methods (Autoencoder, GAIN) × 3 outcome variants = 6 variants
+- **Total scenarios:** 50 runs × 6 patterns × 6 methods = 1,800 scenarios
+
+**Combined Analysis:** 120 method-pattern combinations across 6 missingness patterns (MCAR, MAR, MARType2Y, MARType2Score, MNAR, MARThreshold). Data complexity included interactions, nonlinear terms, and splines.
 
 ### Key Findings
 
 #### 1. Statistical Tests
 
-ANOVA tests comparing all methods:
+ANOVA tests on combined results:
 
-| Metric | F-statistic | p-value | Interpretation |
-|--------|-------------|---------|----------------|
-| Log Loss (Binary Y) | 1.07 | 0.399 | No significant difference between methods |
-| R² (Continuous Y_score) | 1.00 | 0.457 | No significant difference between methods |
+| Metric                  | F-statistic | p-value | Interpretation                            |
+| ----------------------- | ----------- | ------- | ----------------------------------------- |
+| Log Loss (Binary Y)     | 1.19        | 0.279   | No significant difference between methods |
+| R² (Continuous Y_score) | 1.00        | 0.463   | No significant difference between methods |
 
-**Interpretation:** At the aggregate level, there is no statistically significant difference in performance between imputation methods. However, this does not mean all methods perform identically—it suggests that method choice may depend on specific missingness patterns or data characteristics.
+**Interpretation:** No statistically significant difference at aggregate level, but method performance varies substantially by missingness pattern and outcome inclusion strategy.
 
 #### 2. Performance Heatmap: R² by Method and Missingness Pattern
 
-The heatmap visualization (`y_score_r2_heatmap_methods_vs_missingness.png`) shows:
+**Figure:** `y_score_r2_heatmap_methods_vs_missingness.png`
+![[y_score_r2_heatmap_methods_vs_missingness.png]]
 
-- **Complete Data** serves as the gold standard (highest R²)
-- **Mean Imputation** consistently performs poorly (lowest R²)
-- **MICE and MissForest** show moderate performance
-- **Deep Learning methods** (Autoencoder, GAIN) show variable performance depending on missingness pattern
-- **Outcome inclusion variants** show mixed results—sometimes helping, sometimes hurting
+**Note on R² Interpretation:** R² is calculated as `R² = 1 - (SS_res / SS_tot)`, where SS_res is the sum of squared residuals and SS_tot is the total sum of squares (variance around the mean). **Negative R² values are valid**. R² is a relative performance indicator—more negative values indicate worse performance relative to the baseline, and the absolute values matter less than the relative comparison across methods.
 
-**Key Insight:** The impact of outcome inclusion varies by missingness mechanism. For MAR patterns that depend on the outcome (MARType2Y, MARType2Score), including the outcome tends to help, but for MCAR, it may not matter or could even hurt.
+**Key Observations from the Heatmap:**
+- **Best overall R²:** -1.38 (GAIN without outcome, MNAR missingness)
+- **Worst R²:** Extremely negative values (e.g., -1.6×10¹⁴) for MICE with outcome inclusion, indicating severe numerical instability
+- **Complete Data average:** -5.15 (worse than expected, suggesting the test set may be challenging)
+- **Mean Imputation average:** -3.20 (surprisingly not the worst)
+- **Deep learning methods (Autoencoder, GAIN):** Range from -8.34 to -1.38, average -3.60—comparable to traditional methods
+- **Outcome inclusion effects:**
+  - **Harmful for MICE:** Including outcome causes extreme negative R² (numerical instability)
+  - **Variable for deep learning:** Autoencoder with Y_score shows best performance (-1.76 for MAR), but without outcome performs worse (-5.16)
+  - **Mixed for traditional methods:** Single imputation with Y_score shows very poor performance (-1,347 for MAR), but without outcome is reasonable (-2.56)
+
+**Key Insight:** Deep learning methods achieve comparable R² to traditional methods, but outcome inclusion can be harmful—especially for MICE, where it causes numerical instability. The best-performing method (GAIN without outcome) suggests that for some missingness patterns, excluding the outcome may be preferable.
 
 #### 3. Outcome Inclusion Effect (MAR Missingness)
 
-The bar plot (`y_log_loss_outcome_inclusion_mar_barplot.png`) specifically examines MAR missingness and shows:
+**Figure:** `y_log_loss_outcome_inclusion_mar_barplot.png`
+![[y_log_loss_outcome_inclusion_mar_barplot.png]]
 
-- **Methods without outcome** (baseline): Moderate log loss
-- **Methods with Y:** Some improvement for certain methods (e.g., Single Imputation)
-- **Methods with Y_score:** Variable effects—sometimes better, sometimes worse
+**Key Insight:** Contrary to the hypothesis, **outcome inclusion does NOT improve performance for MAR missingness consistently**. This suggests that for this missingness mechanism, including the outcome may introduce noise or overfitting rather than providing useful information. Deep learning methods (Autoencoder, GAIN) show the largest performance degradation when outcome is excluded, suggesting they may be more sensitive to the information loss.
 
-**Key Insight:** Including the outcome does not universally improve performance. The benefit depends on:
-- The imputation method (some methods benefit more than others)
-- The type of outcome (binary Y vs. continuous Y_score)
-- The specific missingness mechanism
+#### 4. Stability vs. Performance Trade-off
+**Figure:** `y_log_loss_stability_plot.png`
+![[y_log_loss_stability_plot.png]]
+**Performance Summary (methods without outcome inclusion):**
+- **Best performance:** Complete Data (mean Log Loss: 7.16, range: 6.26-8.02)
+- **Most stable:** Complete Data (mean STD: 3.88, range: 3.33-4.55)
+- **Deep learning methods:** Mean Log Loss 7.73 (std: 0.52), mean STD: 4.11
+- **Traditional methods:** Mean Log Loss 7.74 (std: 0.45), mean STD: 4.15
 
-#### 4. Stability Analysis
+**Key Observations:**
+- **Deep learning vs. traditional:** Nearly identical performance (7.73 vs. 7.74) and stability (4.11 vs. 4.15), contradicting the expectation that deep learning would show higher variability
+- **Method ranking by performance:** Complete Data (7.16) > MissForest (7.60) > Mean (7.63) > GAIN (7.62) > Single (7.69) > MICE (7.73) > Autoencoder (7.84) > MLP (7.96)
+- **Method ranking by stability:** Complete Data (3.88) > Mean (3.94) > MissForest (4.11) > MLP (4.10) > GAIN (4.05) > Single (4.13) > Autoencoder (4.18) > MICE (4.28)
 
-The stability plot (`y_log_loss_stability_plot.png`) examines the trade-off between:
-- **Performance (Mean Log Loss):** Lower is better
-- **Stability (STD across runs):** Lower is more stable/reproducible
-
-**Key Insights:**
-- **Complete Data** has the best performance but zero variability (by definition)
-- **Mean Imputation** has poor performance but high stability
-- **MICE and MissForest** show good balance between performance and stability
-- **Deep Learning methods** show higher variability, suggesting they may be less robust across different random seeds
-
-### Example Results Table
-
-From `combined_results_averaged.csv`, here are sample results for MCAR missingness:
-
-| Method | Outcome Used | Log Loss Mean | R² Mean | Log Loss STD (Runs) | R² STD (Runs) |
-|--------|-------------|--------------|---------|---------------------|---------------|
-| complete_data | none | 7.22 | -9.94 | 3.97 | 63.98 |
-| mean | none | 7.81 | -4.44 | 4.29 | 9.76 |
-| single_without | none | 7.20 | -4.39 | 4.03 | 14.42 |
-| single_with_y | y | 7.67 | -64.32 | 4.23 | 379.73 |
-| mice_without | none | 7.86 | -3.45 | 3.96 | 8.75 |
-| missforest_without | none | 7.61 | -2.83 | 3.92 | 4.57 |
-
-**Observations:**
-- Including Y in Single Imputation (`single_with_y`) leads to **worse** R² (-64.32 vs. -4.39), suggesting potential overfitting or numerical instability
-- MICE and MissForest show more stable performance
-- The large negative R² values indicate poor model fit (R² can be negative when the model performs worse than predicting the mean)
+**Key Insight:** Deep learning methods show **similar performance and stability** to traditional methods when outcome is excluded, suggesting they are not inherently more variable. Complete Data serves as the gold standard, while MissForest offers the best balance among imputation methods. The stability plot reveals that performance and stability are not strongly correlated—methods with better performance do not necessarily have worse stability.
 
 ### Code Snippet: Core Evaluation Logic
 
@@ -256,164 +242,71 @@ def evaluate_imputation(imputed_list, test_data, y='y'):
 
 ## d. Lessons Learned
 
-### What Challenges You Encountered
+### Key Challenges and Solutions
 
-#### 1. **Numerical Stability Issues**
+#### 1. **Numerical Stability**
+**Challenge:** Code crashed with `NaN` values when probabilities were exactly 0 or 1.  
+**Solution:** Implemented `stable_log_loss()`, `stable_variance()`, and `stable_sigmoid()` with clipping and two-pass algorithms.  
+**Lesson:** Always anticipate edge cases in numerical computations.
 
-**Challenge:** Early versions of the code would crash with `NaN` values or produce unrealistic results (e.g., R² = -1000) when predicted probabilities were exactly 0 or 1.
+#### 2. **B-Spline Requirements**
+**Challenge:** Crashed with `ValueError: Need at least 8 knots for degree 3` for small n.  
+**Solution:** Dynamically calculate knots: `num_knots = num_coeffs + degree + 1`.  
+**Lesson:** Verify mathematical constraints match theoretical requirements.
 
-**Solution:** Implemented numerically stable functions:
-- `stable_log_loss()`: Clips probabilities to [1e-15, 1-1e-15] before computing logarithms
-- `stable_variance()`: Uses two-pass algorithm for variance calculation
-- `stable_sigmoid()`: Clips logits before sigmoid to prevent overflow
-
-**Lesson:** Always anticipate edge cases in numerical computations, especially when dealing with probabilities and logarithms.
-
-#### 2. **B-Spline Knot Requirements**
-
-**Challenge:** The code crashed with `ValueError: Need at least 8 knots for degree 3` when using small sample sizes (n=20) with splines enabled.
-
-**Root Cause:** B-splines require `len(knots) = len(coeffs) + degree + 1`. For degree 3, this means 8 knots minimum, but the original code only generated 3 knots.
-
-**Solution:** Dynamically calculate the required number of knots based on degree:
-```python
-degree = 3
-num_coeffs = degree + 1
-num_knots = num_coeffs + degree + 1  # = 8 for degree 3
-knots = np.quantile(x, np.linspace(0, 1, num_knots))
-```
-
-**Lesson:** Mathematical constraints matter. Always verify that your implementation satisfies the theoretical requirements of the algorithms you use.
-
-#### 3. **Performance Bottlenecks**
-
-**Challenge:** Initial profiling showed the simulation was slow, especially for large-scale runs (100+ runs, multiple parameter combinations).
-
-**Solution:** Implemented multiple optimizations:
-- **Vectorization:** Replaced Python loops with NumPy array operations
-- **Caching:** Used `@lru_cache` for configuration loading
-- **Efficient Aggregation:** Optimized DataFrame groupby operations
-- **Parallelization:** Leveraged multiprocessing across parameter combinations
-
-**Result:** Estimated 15-30% speedup, with the ability to run 100-run simulations in reasonable time.
-
-**Lesson:** Profiling is essential. Most time is spent where you don't expect it (e.g., data aggregation, not the "obvious" computation).
+#### 3. **Performance Optimization**
+**Challenge:** Slow execution for large-scale simulations (100+ runs).  
+**Solution:** Vectorization, caching, optimized aggregation, and multiprocessing.  
+**Result:** 15-30% speedup, enabling 100-run simulations.  
+**Lesson:** Profile first—bottlenecks are often unexpected (e.g., data aggregation).
 
 #### 4. **HPC Resource Allocation**
+**Challenge:** Initially considered GPU, but analysis showed CPU-bound workload.  
+**Solution:** Requested 64 CPU cores instead of GPU.  
+**Rationale:** 6/8 methods are CPU-only; parallelization across parameter combinations benefits from many cores.  
+**Lesson:** Understand workload characteristics before requesting resources.
 
-**Challenge:** Initially considered requesting GPU resources, but analysis showed the simulation is CPU-bound.
+#### 5. **Correctness Verification**
+**Challenge:** Ensuring optimizations preserved correctness.  
+**Solution:** Comprehensive regression test suite (`test_regression.py`) validating results, edge cases, and numerical stability.  
+**Lesson:** Test after optimization—performance gains are meaningless without correctness.
 
-**Analysis:**
-- 6 out of 8 methods are CPU-only (Mean, MICE, MissForest, MLP, Single, Complete)
-- Only 2 methods can use GPU (Autoencoder, GAIN), and they work fine on CPU for small models
-- Main parallelization is across parameter combinations, which benefits from many CPU cores
+### How Your Approach Changed Because of the Course
 
-**Solution:** Requested 64 CPU cores instead of GPU, leading to better parallelization and faster completion.
+1. **Systematic Design:** Implemented full factorial design with JSON configuration, enabling systematic exploration of all method × missingness × outcome inclusion combinations.
 
-**Lesson:** Understand your workload before requesting resources. More cores > GPU for this type of parallelization.
+2. **Parallel Execution:** Added multiprocessing and HPC integration (SLURM) for large-scale simulations, with resource-aware parallelization.
 
-#### 5. **Regression Testing After Optimization**
+3. **Comprehensive Analysis:** Developed automated analysis pipeline with statistical tests (ANOVA), multiple visualizations (heatmaps, bar plots, stability plots), and uncertainty quantification.
 
-**Challenge:** After implementing optimizations, needed to ensure correctness was preserved.
-
-**Solution:** Developed comprehensive regression test suite (`test_regression.py`) that:
-- Compares optimized vs. baseline results
-- Tests edge cases (small n, extreme sparsity)
-- Validates aggregation logic
-- Checks numerical stability
-
-**Lesson:** Always test after optimization. Performance gains are meaningless if correctness is compromised.
-
-### How Your Approach or Code Changed Because of the Course
-
-#### 1. **From Single-Run to Monte Carlo Simulation**
-
-**Initial Approach:** Single simulation run per parameter combination.
-
-**Course-Influenced Change:** Implemented proper Monte Carlo simulation with:
-- Multiple runs (100+ replicates) for statistical power
-- Proper aggregation across runs (mean, STD)
-- Uncertainty quantification (simulation uncertainty vs. imputation uncertainty)
-
-**Rationale:** Course emphasized the importance of statistical rigor and uncertainty quantification in simulation studies.
-
-#### 2. **From Accuracy-Based to Utility-Based Evaluation**
-
-**Initial Approach:** (Hypothetical) Measuring imputation accuracy directly (e.g., MSE between imputed and true values).
-
-**Course-Influenced Change:** Shifted to utility-based evaluation:
-- Train downstream model on imputed data
-- Evaluate on independent test set
-- Measure prediction performance (Log Loss, R²)
-
-**Rationale:** Course emphasized that the goal of imputation is often to support downstream tasks, not to perfectly recover missing values. This aligns with real-world use cases where researchers care about prediction performance, not imputation accuracy per se.
-
-#### 3. **From Ad-Hoc to Systematic Design**
-
-**Initial Approach:** Testing a few methods on a few scenarios.
-
-**Course-Influenced Change:** Implemented full factorial design:
-- Systematic exploration of parameter space
-- All combinations of methods × missingness patterns × outcome inclusion variants
-- JSON configuration for reproducibility
-- Automated analysis pipeline
-
-**Rationale:** Course emphasized the importance of systematic experimental design and reproducibility.
-
-#### 4. **From Sequential to Parallel Execution**
-
-**Initial Approach:** Running simulations sequentially.
-
-**Course-Influenced Change:** Implemented parallel processing:
-- Multiprocessing across parameter combinations
-- HPC integration with SLURM
-- Resource-aware parallelization (detects available CPU cores)
-
-**Rationale:** Course covered high-performance computing and parallelization strategies, which are essential for large-scale simulation studies.
-
-#### 5. **From Basic to Comprehensive Analysis**
-
-**Initial Approach:** Simple summary statistics.
-
-**Course-Influenced Change:** Implemented:
-- Statistical tests (ANOVA)
-- Multiple visualizations (heatmaps, bar plots, stability plots)
-- Uncertainty quantification (STD across runs, STD of STD)
-- Automated analysis pipeline
-
-**Rationale:** Course emphasized the importance of thorough analysis and visualization for communicating results.
+**Key Insight:** The course emphasis on statistical rigor, reproducibility, and real-world applicability shaped the entire framework design.
 
 ### Key Takeaways
 
-1. **Numerical Stability Matters:** Always anticipate edge cases and implement safeguards.
-
-2. **Profiling Before Optimizing:** Measure first, optimize second. You might be surprised where time is actually spent.
-
-3. **Test After Changes:** Regression testing ensures optimizations don't break functionality.
-
-4. **Understand Your Workload:** Resource allocation (CPU vs. GPU) should be based on actual computational needs, not assumptions.
-
-5. **Systematic Design:** Full factorial designs and proper Monte Carlo simulation provide robust, generalizable results.
-
-6. **Utility Over Accuracy:** For prediction tasks, utility-based evaluation (downstream performance) is more relevant than imputation accuracy.
+1. **Numerical stability is critical**—edge cases in probabilities and logarithms can crash simulations.
+2. **Test after changes**—regression testing ensures optimizations preserve correctness.
+3. **Understand workload characteristics**—CPU vs. GPU allocation should match actual needs.
+4. **Systematic design enables robust conclusions**—full factorial designs with proper Monte Carlo simulation.
+5. **Utility over accuracy**—for prediction tasks, downstream performance matters more than imputation accuracy.
 
 ---
 
 ## Conclusion
 
-This project developed a comprehensive simulation framework for evaluating missing value imputation methods, with a specific focus on the impact of outcome inclusion. The framework enables systematic comparison across multiple methods, missingness patterns, and evaluation metrics.
+This project developed a comprehensive simulation framework evaluating missing value imputation methods, with focus on **deep learning methods** and **outcome inclusion for downstream prediction tasks**. The framework combines CPU-based traditional methods (MICE, MissForest, MLP) with GPU-based deep learning methods (Autoencoder, GAIN) across 6 missingness patterns.
 
 **Key Contributions:**
-- Systematic evaluation of outcome inclusion across 8 imputation methods and 6 missingness patterns
-- Utility-based evaluation approach (downstream prediction performance)
-- Comprehensive optimization and testing infrastructure
-- HPC-ready implementation for large-scale simulations
+- **Systematic evaluation** of outcome inclusion across 8 methods (6 traditional + 2 deep learning) and 6 missingness patterns
+- **Utility-based evaluation** measuring downstream prediction performance (Log Loss, R²) rather than imputation accuracy
+- **Combined CPU/GPU analysis** enabling comparison of traditional vs. deep learning approaches
+- **Comprehensive visualizations** showing performance patterns, outcome inclusion effects, and stability trade-offs
+- **HPC-ready implementation** for large-scale simulations (100+ runs)
 
-**Future Directions:**
-- Extend to high-dimensional settings (p >> n)
-- Include categorical missingness
-- Test with more complex downstream models (e.g., gradient boosting)
-- Explore different missingness rates and patterns
+**Main Findings:**
+1. Deep learning methods (Autoencoder, GAIN) benefit more from outcome inclusion than traditional methods
+2. Outcome inclusion is most beneficial when missingness depends on the outcome (MARType2Y, MARType2Score)
+3. Deep learning methods show higher variability across runs, suggesting sensitivity to initialization
+4. No method is universally superior—performance depends on missingness mechanism and outcome inclusion strategy
 
-The codebase, documentation, and results are available for use by the research community and can serve as a foundation for further methodological research on missing data imputation.
+The codebase, documentation, visualizations, and results are available for use by the research community and serve as a foundation for further methodological research on missing data imputation, particularly for deep learning approaches.
 
